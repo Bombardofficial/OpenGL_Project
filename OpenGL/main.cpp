@@ -13,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <vector>
 
 // Vertices coordinates
 GLfloat vertices[] =
@@ -29,6 +30,16 @@ GLuint indices[] =
 	0, 2, 1, // Upper triangle
 	0, 3, 2 // Lower triangle
 };
+
+struct Asteroid {
+	glm::vec3 position;
+	glm::vec3 scale;
+	// Add more properties as needed
+
+	Asteroid(glm::vec3 pos, glm::vec3 scl) : position(pos), scale(scl) {}
+};
+
+std::vector<Asteroid> asteroids; // Vector to hold multiple asteroids
 
 glm::vec3 spaceshipPosition = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 spaceshipScale = glm::vec3(0.2f, 0.2f, 0.2f); // Adjust scale as needed
@@ -85,6 +96,28 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 
 	// Update spaceship rotation
 	spaceshipRotation += offsetX;
+}
+
+void spawnAsteroid() {
+	// Generate random x position along the top of the window
+	float randX = static_cast<float>(rand() % 200 - 100) / 100.0f; // Adjust range as needed
+	float randY = 1.2f; // Spawn slightly outside the top boundary
+
+	// Generate random scale factors for the asteroid
+	float randScale = static_cast<float>(rand() % 50 + 20) / 100.0f; // Random scale between 0.2 and 0.7
+
+	// Add the new asteroid to the vector
+	asteroids.push_back(Asteroid(glm::vec3(randX, randY, 0.0f), glm::vec3(randScale, randScale, randScale))); // Adjust scale as needed
+}
+
+void updateAsteroids() {
+	// Update asteroid positions (e.g., make them fall downwards)
+	const float asteroidSpeed = 0.005f; // Adjust the falling speed as needed
+
+	for (auto& asteroid : asteroids) {
+		asteroid.position.y -= asteroidSpeed;
+		// Add collision detection or removal logic if they reach the bottom or collide with the spaceship
+	}
 }
 
 int main()
@@ -149,12 +182,8 @@ int main()
 	float aspectRatio = (float)windowWidth / (float)windowHeight;
 	glm::mat4 projection = glm::ortho(-aspectRatio, aspectRatio, -1.0f, 1.0f);
 
-		
-
 	// Generates Shader object using shaders default.vert and default.frag
 	Shader shaderProgram("defaultShader.vert", "defaultShader.frag");
-
-
 
 	// Generates Vertex Array Object and binds it
 	VAO VAO1;
@@ -180,6 +209,9 @@ int main()
 	// Texture
 	Texture spaceShip("Assets/SpaceShip.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
 	spaceShip.texUnit(shaderProgram, "tex0", 0);
+
+	Texture asteroidTexture("Assets/Asteroid.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
+	asteroidTexture.texUnit(shaderProgram, "tex0", 0);
 
 	// Original code from the tutorial
 	/*Texture popCat("pop_cat.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
@@ -214,13 +246,38 @@ int main()
 		VAO1.Bind();
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+		// Spawn asteroids at intervals or as needed
+		// Example: spawn an asteroid every 100 frames
+		static int frameCount = 0;
+		if (frameCount % 100 == 0) {
+			spawnAsteroid();
+		}
+		frameCount++;
+
+		// Update asteroid positions
+		updateAsteroids();
+
+		// Draw asteroids
+		for (auto& asteroid : asteroids) {
+
+			// Activate shader and bind asteroid texture
+			shaderProgram.Activate();
+			asteroidTexture.Bind(); // Use the asteroid texture
+
+			// Similar to drawing the spaceship, create transformation matrices and draw each asteroid
+			glm::mat4 asteroidTransform = glm::mat4(1.0f);
+			asteroidTransform = glm::translate(asteroidTransform, asteroid.position);
+			asteroidTransform = glm::scale(asteroidTransform, asteroid.scale);
+
+			// Set transformation matrix in the shader and draw
+			glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
+			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		}
+
 		// Swap buffers and poll events
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
-
-
-
 
 	// Delete all the objects we've created
 	VAO1.Delete();
