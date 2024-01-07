@@ -32,35 +32,60 @@ GLuint indices[] =
 
 glm::vec3 spaceshipPosition = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 spaceshipScale = glm::vec3(0.2f, 0.2f, 0.2f); // Adjust scale as needed
-
+float spaceshipRotation = 0.0f;
 void processInput(GLFWwindow* window);
 
 void processInput(GLFWwindow* window) {
+	
 	const float deltaTime = 0.01f; // You can use a timer for frame-independent movement
 	const float speed = 1.0f; // Reduced speed
 
-	// Use the global spaceshipPosition variable
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		spaceshipPosition.y += speed * deltaTime;
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		spaceshipPosition.y -= speed * deltaTime;
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		spaceshipPosition.x -= speed * deltaTime;
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		spaceshipPosition.x += speed * deltaTime;
+	float adjustedRotation = spaceshipRotation + 90.0f; // Assumes spaceship faces right by default
 
-	// Boundary checks
-	const float max_x = 1.0f - spaceshipScale.x; // Assuming spaceship origin is at its center
-	const float min_x = -1.0f + spaceshipScale.x;
-	const float max_y = 1.0f - spaceshipScale.y;
-	const float min_y = -1.0f + spaceshipScale.y;
+	glm::vec3 forward = glm::vec3(cos(glm::radians(adjustedRotation)), sin(glm::radians(adjustedRotation)), 0.0f);
+	glm::vec3 right = glm::vec3(-forward.y, forward.x, 0.0f);
+
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+		spaceshipPosition += speed * forward * deltaTime;
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+		spaceshipPosition -= speed * forward * deltaTime;
+	/*if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+		spaceshipPosition -= speed * right * deltaTime;
+	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+		spaceshipPosition += speed * right * deltaTime;*/
+
+		// Boundary checks with a margin
+	const float margin = -0.1f; // This will be subtracted from the max boundary and added to the min boundary
+	const float max_x = (1.0f - margin) - spaceshipScale.x; // Right boundary
+	const float min_x = (-1.0f + margin) + spaceshipScale.x; // Left boundary
+	const float max_y = (1.0f - margin) - spaceshipScale.y; // Top boundary
+	const float min_y = (-1.0f + margin) + spaceshipScale.y; // Bottom boundary
 
 	// Clamp the spaceship's position to the window boundaries
 	spaceshipPosition.x = std::max(min_x, std::min(spaceshipPosition.x, max_x));
 	spaceshipPosition.y = std::max(min_y, std::min(spaceshipPosition.y, max_y));
+
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+	}
 }
 
+void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+	static double lastX = 800 / 2.0;
+	static double lastY = 800 / 2.0;
 
+	// Sensitivity factor
+	const float sensitivity = 0.1f;
+
+	double offsetX = (xpos - lastX) * sensitivity;
+	double offsetY = (lastY - ypos) * sensitivity; // Reversed since y-coordinates range from bottom to top
+
+	lastX = xpos;
+	lastY = ypos;
+
+	// Update spaceship rotation
+	spaceshipRotation += offsetX;
+}
 
 int main()
 {
@@ -102,7 +127,11 @@ int main()
 	// Make the OpenGL context current
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); // Enable v-sync
+	// Set the mouse callback
+	glfwSetCursorPosCallback(window, mouse_callback);
 
+	// Hide the cursor and capture it
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	// Load GLAD
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
 		std::cout << "Failed to initialize GLAD" << std::endl;
@@ -176,7 +205,7 @@ int main()
 		glm::mat4 transform = glm::mat4(1.0f);
 		transform = glm::translate(transform, spaceshipPosition); // Move the spaceship
 		transform = glm::scale(transform, spaceshipScale); // Scale the spaceship
-
+		transform = glm::rotate(transform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f)); // rotate the spaceship
 		// Set the transformation matrix in the shader
 		unsigned int transformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
 		glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
