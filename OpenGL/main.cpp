@@ -2,6 +2,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #endif
+
 #include <iostream>
 #include "glad.h"
 #include <GLFW/glfw3.h>
@@ -34,17 +35,20 @@ GLuint indices[] =
 struct Asteroid {
 	glm::vec3 position;
 	glm::vec3 scale;
-	// Add more properties as needed
+	float radius; // Adding radius as a member variable
 
-	Asteroid(glm::vec3 pos, glm::vec3 scl) : position(pos), scale(scl) {}
+	Asteroid(glm::vec3 pos, glm::vec3 scl, float rad) : position(pos), scale(scl), radius(rad) {}
 };
 
+//Global variables
 std::vector<Asteroid> asteroids; // Vector to hold multiple asteroids
-
 glm::vec3 spaceshipPosition = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 spaceshipScale = glm::vec3(0.2f, 0.2f, 0.2f); // Adjust scale as needed
 float spaceshipRotation = 0.0f;
 void processInput(GLFWwindow* window);
+bool gameOver = false;
+float spaceshipCollisionRadius = 0.01f; // Adjust based on spaceship size
+float asteroidCollisionRadius = 0.02f; // Adjust based on asteroid size, might vary per asteroid
 
 void processInput(GLFWwindow* window) {
 	
@@ -86,7 +90,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 	static double lastY = 800 / 2.0;
 
 	// Sensitivity factor
-	const float sensitivity = 0.1f;
+	const float sensitivity = 0.07f;
 
 	double offsetX = (xpos - lastX) * sensitivity;
 	double offsetY = (lastY - ypos) * sensitivity; // Reversed since y-coordinates range from bottom to top
@@ -99,26 +103,39 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 }
 
 void spawnAsteroid() {
-	// Generate random x position along the top of the window
-	float randX = static_cast<float>(rand() % 200 - 100) / 100.0f; // Adjust range as needed
-	float randY = 1.2f; // Spawn slightly outside the top boundary
+	float randX = static_cast<float>(rand() % 200 - 100) / 100.0f; // Random x position
+	float randY = 1.2f; // Y position
+	float randScale = static_cast<float>(rand() % 50 + 20) / 100.0f; // Random scale
 
-	// Generate random scale factors for the asteroid
-	float randScale = static_cast<float>(rand() % 50 + 20) / 100.0f; // Random scale between 0.2 and 0.7
+	// Approximate radius for the asteroid based on scale
+	float radius = randScale * 0.2f; // Adjust this factor as needed
+	asteroids.push_back(Asteroid(glm::vec3(randX, randY, 0.0f), glm::vec3(randScale, randScale, randScale), radius));
+}
 
-	// Add the new asteroid to the vector
-	asteroids.push_back(Asteroid(glm::vec3(randX, randY, 0.0f), glm::vec3(randScale, randScale, randScale))); // Adjust scale as needed
+bool checkCollision(const Asteroid& asteroid) {
+	glm::vec2 spaceshipCenter(spaceshipPosition.x, spaceshipPosition.y);
+	glm::vec2 asteroidCenter(asteroid.position.x, asteroid.position.y);
+
+	float distance = glm::distance(spaceshipCenter, asteroidCenter);
+
+	// Use asteroid's specific radius
+	return distance < (spaceshipCollisionRadius + asteroid.radius);
 }
 
 void updateAsteroids() {
-	// Update asteroid positions (e.g., make them fall downwards)
-	const float asteroidSpeed = 0.005f; // Adjust the falling speed as needed
+	const float asteroidSpeed = 0.005f;
 
 	for (auto& asteroid : asteroids) {
 		asteroid.position.y -= asteroidSpeed;
-		// Add collision detection or removal logic if they reach the bottom or collide with the spaceship
+
+		if (checkCollision(asteroid)) {
+			gameOver = true;
+			break;
+		}
 	}
 }
+
+
 
 int main()
 {
@@ -225,55 +242,68 @@ int main()
 		// Process input
 		processInput(window);
 
-		// Set background color and clear buffers
-		glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+		if (!gameOver) {
+			// Set background color and clear buffers
+			glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
 
-		// Activate shader and bind texture
-		shaderProgram.Activate();
-		spaceShip.Bind();
-
-		// Create transformation matrix
-		glm::mat4 transform = glm::mat4(1.0f);
-		transform = glm::translate(transform, spaceshipPosition); // Move the spaceship
-		transform = glm::scale(transform, spaceshipScale); // Scale the spaceship
-		transform = glm::rotate(transform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f)); // rotate the spaceship
-		// Set the transformation matrix in the shader
-		unsigned int transformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
-		glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
-
-		// Draw the spaceship
-		VAO1.Bind();
-		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-		// Spawn asteroids at intervals or as needed
-		// Example: spawn an asteroid every 100 frames
-		static int frameCount = 0;
-		if (frameCount % 100 == 0) {
-			spawnAsteroid();
-		}
-		frameCount++;
-
-		// Update asteroid positions
-		updateAsteroids();
-
-		// Draw asteroids
-		for (auto& asteroid : asteroids) {
-
-			// Activate shader and bind asteroid texture
+			// Activate shader and bind texture
 			shaderProgram.Activate();
-			asteroidTexture.Bind(); // Use the asteroid texture
+			spaceShip.Bind();
 
-			// Similar to drawing the spaceship, create transformation matrices and draw each asteroid
-			glm::mat4 asteroidTransform = glm::mat4(1.0f);
-			asteroidTransform = glm::translate(asteroidTransform, asteroid.position);
-			asteroidTransform = glm::scale(asteroidTransform, asteroid.scale);
+			// Create transformation matrix
+			glm::mat4 transform = glm::mat4(1.0f);
+			transform = glm::translate(transform, spaceshipPosition); // Move the spaceship
+			transform = glm::scale(transform, spaceshipScale); // Scale the spaceship
+			transform = glm::rotate(transform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f)); // rotate the spaceship
+			// Set the transformation matrix in the shader
+			unsigned int transformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
+			glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
 
-			// Set transformation matrix in the shader and draw
-			glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
+			// Draw the spaceship
+			VAO1.Bind();
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-		}
 
+			// Spawn asteroids at intervals or as needed
+			// Example: spawn an asteroid every 100 frames
+			static int frameCount = 0;
+			if (frameCount % 100 == 0) {
+				spawnAsteroid();
+			}
+			frameCount++;
+
+			// Update asteroid positions
+			updateAsteroids();
+
+			// Draw asteroids
+			for (auto& asteroid : asteroids) {
+
+				// Activate shader and bind asteroid texture
+				shaderProgram.Activate();
+				asteroidTexture.Bind(); // Use the asteroid texture
+
+				// Similar to drawing the spaceship, create transformation matrices and draw each asteroid
+				glm::mat4 asteroidTransform = glm::mat4(1.0f);
+				asteroidTransform = glm::translate(asteroidTransform, asteroid.position);
+				asteroidTransform = glm::scale(asteroidTransform, asteroid.scale);
+
+				// Set transformation matrix in the shader and draw
+				glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
+				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+			}
+
+		}
+		else {
+			// Render game over screen
+			// Clear screen
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Black background
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			// Render "Game Over" text
+			// This can be done using text rendering libraries like FreeType
+			// For simplicity, you might just display a black screen here
+		}
+		
 		// Swap buffers and poll events
 		glfwSwapBuffers(window);
 		glfwPollEvents();
