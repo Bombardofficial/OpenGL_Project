@@ -15,6 +15,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vector>
+using namespace std;
 
 // Vertices coordinates
 GLfloat vertices[] =
@@ -163,6 +164,9 @@ int main()
 	int windowX = monitorX + (mode->width - windowWidth) / 2;
 	int windowY = monitorY + (mode->height - windowHeight) / 2;
 
+	double lastAsteroidSpawnIntervalUpdate = glfwGetTime();
+	float asteroidSpawnInterval = 100.0f;
+
 	// Create a windowed mode window with no decorations
 	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Space Explorer", NULL, NULL);
 	if (!window) {
@@ -264,10 +268,23 @@ int main()
 			VAO1.Bind();
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+			// Update the timer
+			double currentTime = glfwGetTime();
+			double deltaTime = currentTime - lastAsteroidSpawnIntervalUpdate;
+
+			// Check if 10 seconds have passed
+			if (deltaTime >= 10 && asteroidSpawnInterval > 20.0f)
+			{
+				// Decrease the spawn interval by a certain amount
+				asteroidSpawnInterval -= 10.0f; // Decrease by 10 frames, adjust as needed
+
+				lastAsteroidSpawnIntervalUpdate = currentTime;
+			}
+
 			// Spawn asteroids at intervals or as needed
 			// Example: spawn an asteroid every 100 frames
 			static int frameCount = 0;
-			if (frameCount % 100 == 0) {
+			if (frameCount % static_cast<int>(asteroidSpawnInterval) == 0) {
 				spawnAsteroid();
 			}
 			frameCount++;

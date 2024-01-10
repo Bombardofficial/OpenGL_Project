@@ -64,6 +64,9 @@
     <Image Include="Assets\SpaceShip.png">
       <Filter>Ressourcendateien</Filter>
     </Image>
+    <Image Include="Assets\Asteroid.png">
+      <Filter>Ressourcendateien</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <None Include="defaultShader.frag" />
