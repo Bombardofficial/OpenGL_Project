@@ -51,10 +51,13 @@ bool gameOver = false;
 float spaceshipCollisionRadius = 0.01f; // Adjust based on spaceship size
 float asteroidCollisionRadius = 0.02f; // Adjust based on asteroid size, might vary per asteroid
 
+
+
+
 void processInput(GLFWwindow* window) {
 	
 	const float deltaTime = 0.01f; // You can use a timer for frame-independent movement
-	const float speed = 1.0f; // Reduced speed
+	const float speed = 0.7f; // Reduced speed
 
 	float adjustedRotation = spaceshipRotation + 90.0f; // Assumes spaceship faces right by default
 
@@ -93,8 +96,8 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 	// Sensitivity factor
 	const float sensitivity = 0.07f;
 
-	double offsetX = (xpos - lastX) * sensitivity;
-	double offsetY = (lastY - ypos) * sensitivity; // Reversed since y-coordinates range from bottom to top
+	double offsetX = (lastX - xpos) * sensitivity; // Invert the offsetX calculation
+	double offsetY = (lastY - ypos) * sensitivity; // Keep offsetY calculation as it is
 
 	lastX = xpos;
 	lastY = ypos;
@@ -154,8 +157,8 @@ int main()
 	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
 
 	// Desired window size
-	const int windowWidth = 800;
-	const int windowHeight = 800;
+	const int windowWidth = 1200;
+	const int windowHeight = 1200;
 
 	// Calculate the center position
 	int monitorX, monitorY;
@@ -232,12 +235,20 @@ int main()
 	spaceShip.texUnit(shaderProgram, "tex0", 0);
 
 	Texture asteroidTexture("Assets/Asteroid.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
-	asteroidTexture.texUnit(shaderProgram, "tex0", 0);
+	asteroidTexture.texUnit(shaderProgram, "tex1", 0);
+
+	Texture normalMap("Assets/NormalMap.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
+	normalMap.texUnit(shaderProgram, "normalMap", 1);
+
+	Texture normalMap2("Assets/NormalMap2.png", GL_TEXTURE_2D, GL_TEXTURE2, GL_RGBA, GL_UNSIGNED_BYTE);
+	normalMap2.texUnit(shaderProgram, "normalMap2", 3);
 
 	// Original code from the tutorial
 	/*Texture popCat("pop_cat.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
 	popCat.texUnit(shaderProgram, "tex0", 0);*/
 
+	double lastTime = glfwGetTime();
+	float lightIntensity = 1.0f;
 
 
 	// Main loop
@@ -246,14 +257,45 @@ int main()
 		// Process input
 		processInput(window);
 
+		// Disable the depth test
+		glDisable(GL_DEPTH_TEST);
+
+		// Calculate time passed
+		double currentTime = glfwGetTime();
+		float deltaTime = float(currentTime - lastTime);
+		lastTime = currentTime;
+
+		// Update light intensity dynamically
+		float frequency = 0.2f;
+		float steepness = 3.0f;
+		lightIntensity = 0.5f + 0.5f * sin(currentTime * frequency) * steepness;
+			
+		// Clamp the light intensity to stay within the range [0.0, 1.0]
+		lightIntensity = fmax(0.0f, fmin(lightIntensity, 1.0f));
+
+		// Activate shader
+		shaderProgram.Activate();
+		float lightDirectionX = sin(currentTime * 0.8f);
+		// Set light direction and dynamic light intensity in shader
+		glm::vec3 lightDir = glm::normalize(glm::vec3(lightDirectionX, -1.0f, -1.0f));
+		GLint lightDirLoc = glGetUniformLocation(shaderProgram.ID, "lightDir");
+		glUniform3f(lightDirLoc, lightDir.x, lightDir.y, lightDir.z);
+
+		GLint lightIntensityLoc = glGetUniformLocation(shaderProgram.ID, "lightIntensity");
+		glUniform1f(lightIntensityLoc, lightIntensity);
+
 		if (!gameOver) {
 			// Set background color and clear buffers
 			glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			// Activate shader and bind texture
 			shaderProgram.Activate();
-			spaceShip.Bind();
+			glActiveTexture(GL_TEXTURE0); // Activate the texture unit
+			spaceShip.Bind();             // Bind the texture
+			shaderProgram.setInt("tex0", 0);
+			shaderProgram.setBool("isAsteroid", false);
+			glActiveTexture(GL_TEXTURE3); // Activate the texture unit for the spaceship normal map
+			normalMap2.Bind();
 
 			// Create transformation matrix
 			glm::mat4 transform = glm::mat4(1.0f);
@@ -295,9 +337,14 @@ int main()
 			// Draw asteroids
 			for (auto& asteroid : asteroids) {
 
-				// Activate shader and bind asteroid texture
 				shaderProgram.Activate();
-				asteroidTexture.Bind(); // Use the asteroid texture
+				glActiveTexture(GL_TEXTURE1); // Activate the texture unit
+				asteroidTexture.Bind();       // Bind the texture
+				shaderProgram.setInt("tex1", 1);
+				glActiveTexture(GL_TEXTURE2); // Activate the texture unit
+				normalMap.Bind();             // Bind the texture
+				shaderProgram.setInt("normalMap", 2);
+				shaderProgram.setBool("isAsteroid", true);
 
 				// Similar to drawing the spaceship, create transformation matrices and draw each asteroid
 				glm::mat4 asteroidTransform = glm::mat4(1.0f);
