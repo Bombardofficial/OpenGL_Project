@@ -153,8 +153,11 @@
   <ItemGroup>
     <Image Include="Assets\Asteroid.png" />
     <Image Include="Assets\SpaceShip.png" />
+    <Image Include="Assets\Stars.png" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="backgroundShader.frag" />
+    <None Include="backgroundShader.vert" />
     <None Include="defaultShader.frag" />
     <None Include="defaultShader.vert" />
   </ItemGroup>

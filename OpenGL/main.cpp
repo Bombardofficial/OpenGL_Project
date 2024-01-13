@@ -17,6 +17,22 @@
 #include <vector>
 using namespace std;
 
+// Vertices coordinates for background
+GLfloat backgroundVertices[] =
+{
+	-1.0f, -1.0f, 0.0f,  // Bottom left corner
+	-1.0f,  1.0f, 0.0f,  // Top left corner
+	 1.0f,  1.0f, 0.0f,  // Top right corner
+	 1.0f, -1.0f, 0.0f   // Bottom right corner
+};
+
+// Indices for background quad
+GLuint backgroundIndices[] =
+{
+	0, 1, 2,  // Upper triangle
+	0, 2, 3   // Lower triangle
+};
+
 // Vertices coordinates
 GLfloat vertices[] =
 { //     COORDINATES     /        COLORS      /   TexCoord  //
@@ -130,7 +146,7 @@ void updateAsteroids() {
 		asteroid.position.y -= asteroidSpeed;
 
 		if (checkCollision(asteroid)) {
-			gameOver = true;
+			//gameOver = true;
 			break;
 		}
 	}
@@ -206,6 +222,26 @@ int main()
 	// Generates Shader object using shaders default.vert and default.frag
 	Shader shaderProgram("defaultShader.vert", "defaultShader.frag");
 
+	Shader backgroundShader("backgroundShader.vert", "backgroundShader.frag");
+
+	// Generates Vertex Array Object and binds it
+	VAO VAOBackground;
+	VAOBackground.Bind();
+
+	// Generates Vertex Buffer Object and links it to backgroundVertices
+	VBO VBOBackground(backgroundVertices, sizeof(backgroundVertices));
+
+	// Generates Element Buffer Object and links it to backgroundIndices
+	EBO EBOBackground(backgroundIndices, sizeof(backgroundIndices));
+
+	// Links VBO attributes such as coordinates to VAO
+	VAOBackground.LinkAttrib(VBOBackground, 0, 3, GL_FLOAT, 3 * sizeof(float), (void*)0);
+
+	// Unbind all to prevent accidentally modifying them
+	VAOBackground.Unbind();
+	VBOBackground.Unbind();
+	EBOBackground.Unbind();
+
 	// Generates Vertex Array Object and binds it
 	VAO VAO1;
 	VAO1.Bind();
@@ -228,6 +264,10 @@ int main()
 	GLuint uniID = glGetUniformLocation(shaderProgram.ID, "scale");
 
 	// Texture
+
+	Texture backgroundTexture("Assets/Stars.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
+	backgroundTexture.texUnit(shaderProgram, "texBackground", 0);
+
 	Texture spaceShip("Assets/SpaceShip.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
 	spaceShip.texUnit(shaderProgram, "tex0", 0);
 
@@ -246,10 +286,18 @@ int main()
 		// Process input
 		processInput(window);
 
+		// Set background color and clear buffers
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		// Draw the background
+		backgroundShader.Activate();
+		backgroundTexture.Bind();
+		
+		VAOBackground.Bind();
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
 		if (!gameOver) {
-			// Set background color and clear buffers
-			glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
-			glClear(GL_COLOR_BUFFER_BIT);
 
 			// Activate shader and bind texture
 			shaderProgram.Activate();
@@ -295,8 +343,7 @@ int main()
 			// Draw asteroids
 			for (auto& asteroid : asteroids) {
 
-				// Activate shader and bind asteroid texture
-				shaderProgram.Activate();
+				// bind asteroid texture
 				asteroidTexture.Bind(); // Use the asteroid texture
 
 				// Similar to drawing the spaceship, create transformation matrices and draw each asteroid
@@ -332,6 +379,10 @@ int main()
 	EBO1.Delete();
 	spaceShip.Delete();
 	shaderProgram.Delete();
+	// Delete textures
+	backgroundTexture.Delete();
+	spaceShip.Delete();
+	asteroidTexture.Delete();
 	// Delete window before ending the program
 	glfwDestroyWindow(window);
 	// Terminate GLFW before ending the program
