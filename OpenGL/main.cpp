@@ -236,6 +236,9 @@ int main()
 	Texture normalMap("Assets/NormalMap.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
 	normalMap.texUnit(shaderProgram, "normalMap", 1);
 
+	Texture normalMap2("Assets/NormalMap2.png", GL_TEXTURE_2D, GL_TEXTURE2, GL_RGBA, GL_UNSIGNED_BYTE);
+	normalMap2.texUnit(shaderProgram, "normalMap2", 3);
+
 	// Original code from the tutorial
 	/*Texture popCat("pop_cat.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
 	popCat.texUnit(shaderProgram, "tex0", 0);*/
@@ -262,15 +265,15 @@ int main()
 		float frequency = 0.2f;
 		float steepness = 3.0f;
 		lightIntensity = 0.5f + 0.5f * sin(currentTime * frequency) * steepness;
-
+			
 		// Clamp the light intensity to stay within the range [0.0, 1.0]
 		lightIntensity = fmax(0.0f, fmin(lightIntensity, 1.0f));
 
 		// Activate shader
 		shaderProgram.Activate();
-
+		float lightDirectionX = sin(currentTime * 0.8f);
 		// Set light direction and dynamic light intensity in shader
-		glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, -1.0f, -1.0f));
+		glm::vec3 lightDir = glm::normalize(glm::vec3(lightDirectionX, -1.0f, -1.0f));
 		GLint lightDirLoc = glGetUniformLocation(shaderProgram.ID, "lightDir");
 		glUniform3f(lightDirLoc, lightDir.x, lightDir.y, lightDir.z);
 
@@ -287,7 +290,8 @@ int main()
 			spaceShip.Bind();             // Bind the texture
 			shaderProgram.setInt("tex0", 0);
 			shaderProgram.setBool("isAsteroid", false);
-
+			glActiveTexture(GL_TEXTURE3); // Activate the texture unit for the spaceship normal map
+			normalMap2.Bind();
 
 			// Create transformation matrix
 			glm::mat4 transform = glm::mat4(1.0f);

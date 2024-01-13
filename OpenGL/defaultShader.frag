@@ -9,7 +9,7 @@ out vec4 FragColor;
 uniform sampler2D tex0; // Texture unit for the spaceship texture
 uniform sampler2D tex1; // Texture unit for the asteroid texture
 uniform sampler2D normalMap; // Normal map for the asteroid
-
+uniform sampler2D normalMap2;
 uniform vec3 lightDir; // Direction to the light source
 uniform float lightIntensity; // Light intensity
 uniform bool isAsteroid; // Flag to indicate if the current object is an asteroid
@@ -26,6 +26,14 @@ void main() {
         texNormal = normalize(texNormal * 2.0 - 1.0);
         norm = texNormal;
         texColor = texture(tex1, texCoord); // Fetch the asteroid texture color (with alpha)
+        materialColor = texColor.rgb; // Material color is taken from the asteroid's texture
+    }
+
+    if (!isAsteroid) {
+        vec3 texNormal = texture(normalMap2, texCoord).rgb;
+        texNormal = normalize(texNormal * 2.0 - 1.0);
+        norm = texNormal;
+        texColor = texture(tex0, texCoord); // Fetch the asteroid texture color (with alpha)
         materialColor = texColor.rgb; // Material color is taken from the asteroid's texture
     }
 
