@@ -15,6 +15,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vector>
+#include <random>
 using namespace std;
 
 // Vertices coordinates
@@ -36,10 +37,15 @@ GLuint indices[] =
 struct Asteroid {
 	glm::vec3 position;
 	glm::vec3 scale;
-	float radius; // Adding radius as a member variable
+	float radius;
+	float speed; // Speed of the asteroid
 
-	Asteroid(glm::vec3 pos, glm::vec3 scl, float rad) : position(pos), scale(scl), radius(rad) {}
+	Asteroid(glm::vec3 pos, glm::vec3 scl, float rad, float spd)
+		: position(pos), scale(scl), radius(rad), speed(spd) {}
 };
+
+
+
 
 //Global variables
 std::vector<Asteroid> asteroids; // Vector to hold multiple asteroids
@@ -50,22 +56,40 @@ void processInput(GLFWwindow* window);
 bool gameOver = false;
 float spaceshipCollisionRadius = 0.01f; // Adjust based on spaceship size
 float asteroidCollisionRadius = 0.02f; // Adjust based on asteroid size, might vary per asteroid
-
-
+const float WORLD_SIZE_X = 50.0f; // Adjust as needed
+const float WORLD_SIZE_Y = 50.0f; // Adjust as needed
+// Desired window size
+const int windowWidth = 1200;
+const int windowHeight = 1200;
+// Set up orthographic projection
+float aspectRatio = (float)windowWidth / (float)windowHeight;
+std::random_device rd;
+std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()
+std::uniform_real_distribution<> disX;
+std::uniform_real_distribution<> disY;
+std::uniform_real_distribution<> disScale(0.2f, 0.7f); // Adjust the range as needed for asteroid scale
+// Set the size of the visible area
+const float VIEW_WIDTH = 2.5f; // The width of the visible area you want to see around the spaceship
+const float VIEW_HEIGHT = VIEW_WIDTH / aspectRatio; // The height will depend on the aspect ratio to avoid stretching
+bool isPaused = false;
+bool escPreviouslyPressed = false;
 
 
 void processInput(GLFWwindow* window) {
 	
 	const float deltaTime = 0.01f; // You can use a timer for frame-independent movement
-	const float speed = 0.7f; // Reduced speed
+	const float speed = 0.5f; // Reduced speed
 
 	float adjustedRotation = spaceshipRotation + 90.0f; // Assumes spaceship faces right by default
 
+	// Forward direction based on the spaceship's rotation
 	glm::vec3 forward = glm::vec3(cos(glm::radians(adjustedRotation)), sin(glm::radians(adjustedRotation)), 0.0f);
-	glm::vec3 right = glm::vec3(-forward.y, forward.x, 0.0f);
 
+	// Move forward
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
 		spaceshipPosition += speed * forward * deltaTime;
+
+	// Move backward
 	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
 		spaceshipPosition -= speed * forward * deltaTime;
 	/*if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
@@ -81,39 +105,80 @@ void processInput(GLFWwindow* window) {
 	const float min_y = (-1.0f + margin) + spaceshipScale.y; // Bottom boundary
 
 	// Clamp the spaceship's position to the window boundaries
-	spaceshipPosition.x = std::max(min_x, std::min(spaceshipPosition.x, max_x));
-	spaceshipPosition.y = std::max(min_y, std::min(spaceshipPosition.y, max_y));
+	//spaceshipPosition.x = std::max(min_x, std::min(spaceshipPosition.x, max_x));
+	//spaceshipPosition.y = std::max(min_y, std::min(spaceshipPosition.y, max_y));
+
+	// World wrapping logic
+	if (spaceshipPosition.x < -WORLD_SIZE_X / 2) spaceshipPosition.x = WORLD_SIZE_X / 2;
+	else if (spaceshipPosition.x > WORLD_SIZE_X / 2) spaceshipPosition.x = -WORLD_SIZE_X / 2;
+
+	if (spaceshipPosition.y < -WORLD_SIZE_Y / 2) spaceshipPosition.y = WORLD_SIZE_Y / 2;
+	else if (spaceshipPosition.y > WORLD_SIZE_Y / 2) spaceshipPosition.y = -WORLD_SIZE_Y / 2;
 
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		if (!escPreviouslyPressed) {
+			isPaused = !isPaused;
+			glfwSetInputMode(window, GLFW_CURSOR, isPaused ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+		}
+		escPreviouslyPressed = true;
+	}
+	else {
+		escPreviouslyPressed = false;
+	}
+	if (isPaused) {
+		return; // Skip the rest of the input handling
 	}
 }
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
-	static double lastX = 800 / 2.0;
-	static double lastY = 800 / 2.0;
+	static float lastX = 1200 / 2.0;
+	static float lastY = 1200 / 2.0;
 
 	// Sensitivity factor
 	const float sensitivity = 0.07f;
 
-	double offsetX = (lastX - xpos) * sensitivity; // Invert the offsetX calculation
-	double offsetY = (lastY - ypos) * sensitivity; // Keep offsetY calculation as it is
+	double offsetX = static_cast<float>(lastX - xpos) * sensitivity; // Invert the offsetX calculation
+	double offsetY = static_cast<float>(lastY - ypos) * sensitivity; // Keep offsetY calculation as it is
 
-	lastX = xpos;
-	lastY = ypos;
+	lastX = static_cast<float>(xpos);
+	lastY = static_cast<float>(ypos);
 
 	// Update spaceship rotation
-	spaceshipRotation += offsetX;
+	spaceshipRotation += static_cast<float>(offsetX);
 }
+std::uniform_real_distribution<> disSpeed(0.005f, 0.015f);
 
 void spawnAsteroid() {
-	float randX = static_cast<float>(rand() % 200 - 100) / 100.0f; // Random x position
-	float randY = 1.2f; // Y position
-	float randScale = static_cast<float>(rand() % 50 + 20) / 100.0f; // Random scale
+	const float spawnMargin = 0.8f; // Adjust as needed
 
-	// Approximate radius for the asteroid based on scale
+	// Calculate the spawn bounds
+	float minX = std::max(spaceshipPosition.x - VIEW_WIDTH / 2 - spawnMargin, -WORLD_SIZE_X / 2);
+	float maxX = std::min(spaceshipPosition.x + VIEW_WIDTH / 2 + spawnMargin, WORLD_SIZE_X / 2);
+	float minY = std::max(spaceshipPosition.y - VIEW_HEIGHT / 2 - spawnMargin, -WORLD_SIZE_Y / 2);
+	float maxY = std::min(spaceshipPosition.y + VIEW_HEIGHT / 2 + spawnMargin, WORLD_SIZE_Y / 2);
+
+	// Generate a random position for the asteroid
+	std::uniform_real_distribution<float> distX(minX, maxX);
+	std::uniform_real_distribution<float> distY(minY, maxY);
+	std::uniform_real_distribution<float> distScale(0.2f, 0.7f); // Adjust range as needed
+	std::uniform_real_distribution<float> distSpeed(0.005f, 0.015f); // Range for asteroid speed
+
+	float randX = distX(gen);
+	float randY = distY(gen);
+
+	// Ensure the asteroid isn't spawned within the viewable area
+	while ((randX > spaceshipPosition.x - VIEW_WIDTH / 2) && (randX < spaceshipPosition.x + VIEW_WIDTH / 2) &&
+		(randY > spaceshipPosition.y - VIEW_HEIGHT / 2) && (randY < spaceshipPosition.y + VIEW_HEIGHT / 2)) {
+		randX = distX(gen);
+		randY = distY(gen);
+	}
+
+	float randScale = distScale(gen);
 	float radius = randScale * 0.2f; // Adjust this factor as needed
-	asteroids.push_back(Asteroid(glm::vec3(randX, randY, 0.0f), glm::vec3(randScale, randScale, randScale), radius));
+	float speed = distSpeed(gen); // Random speed for each asteroid
+
+	// Push the new asteroid into the vector with a random speed
+	asteroids.push_back(Asteroid(glm::vec3(randX, randY, 0.0f), glm::vec3(randScale, randScale, randScale), radius, speed));
 }
 
 bool checkCollision(const Asteroid& asteroid) {
@@ -127,15 +192,13 @@ bool checkCollision(const Asteroid& asteroid) {
 }
 
 void updateAsteroids() {
-	const float asteroidSpeed = 0.005f;
-
 	for (auto& asteroid : asteroids) {
-		asteroid.position.y -= asteroidSpeed;
+		asteroid.position.y -= asteroid.speed; // Use the asteroid's individual speed
 
 		if (checkCollision(asteroid)) {
 			gameOver = true;
 			break;
-		}
+		}	
 	}
 }
 
@@ -156,10 +219,7 @@ int main()
 	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
 
-	// Desired window size
-	const int windowWidth = 1200;
-	const int windowHeight = 1200;
-
+	
 	// Calculate the center position
 	int monitorX, monitorY;
 	glfwGetMonitorPos(monitor, &monitorX, &monitorY);
@@ -168,7 +228,7 @@ int main()
 	int windowY = monitorY + (mode->height - windowHeight) / 2;
 
 	double lastAsteroidSpawnIntervalUpdate = glfwGetTime();
-	float asteroidSpawnInterval = 100.0f;
+	float asteroidSpawnInterval = 40.0f;
 
 	// Create a windowed mode window with no decorations
 	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Space Explorer", NULL, NULL);
@@ -202,9 +262,9 @@ int main()
 	// Set up the viewport
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	// Set up orthographic projection
-	float aspectRatio = (float)windowWidth / (float)windowHeight;
-	glm::mat4 projection = glm::ortho(-aspectRatio, aspectRatio, -1.0f, 1.0f);
+	
+	
+	glm::mat4 projection = glm::ortho(-VIEW_WIDTH / 2, VIEW_WIDTH / 2, -VIEW_HEIGHT / 2, VIEW_HEIGHT / 2);
 
 	// Generates Shader object using shaders default.vert and default.frag
 	Shader shaderProgram("defaultShader.vert", "defaultShader.frag");
@@ -243,9 +303,6 @@ int main()
 	Texture normalMap2("Assets/NormalMap2.png", GL_TEXTURE_2D, GL_TEXTURE2, GL_RGBA, GL_UNSIGNED_BYTE);
 	normalMap2.texUnit(shaderProgram, "normalMap2", 3);
 
-	// Original code from the tutorial
-	/*Texture popCat("pop_cat.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
-	popCat.texUnit(shaderProgram, "tex0", 0);*/
 
 	double lastTime = glfwGetTime();
 	float lightIntensity = 1.0f;
@@ -254,15 +311,35 @@ int main()
 	// Main loop
 	while (!glfwWindowShouldClose(window))
 	{
+		
 		// Process input
 		processInput(window);
+		
+		// Start with an identity matrix each frame
+		glm::mat4 view = glm::mat4(1.0f);
+
+		// First, rotate the view matrix around the Z-axis to counteract the spaceship's rotation
+		view = glm::rotate(view, glm::radians(-spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f));
+
+		// Then, translate the view matrix to counteract the spaceship's position
+		view = glm::translate(view, glm::vec3(-spaceshipPosition.x, -spaceshipPosition.y, -1.0f));
+
+		shaderProgram.Activate();
+
+		// Pass the view matrix to the shader
+		unsigned int viewLoc = glGetUniformLocation(shaderProgram.ID, "view");
+		glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+		// Pass the projection matrix to the shader (this only needs to be done once unless the projection changes)
+		unsigned int projLoc = glGetUniformLocation(shaderProgram.ID, "projection");
+		glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
 		// Disable the depth test
 		glDisable(GL_DEPTH_TEST);
 
 		// Calculate time passed
 		double currentTime = glfwGetTime();
-		float deltaTime = float(currentTime - lastTime);
+		float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
 
 		// Update light intensity dynamically
@@ -271,11 +348,12 @@ int main()
 		lightIntensity = 0.5f + 0.5f * sin(currentTime * frequency) * steepness;
 			
 		// Clamp the light intensity to stay within the range [0.0, 1.0]
-		lightIntensity = fmax(0.0f, fmin(lightIntensity, 1.0f));
+		lightIntensity = 0.5f + 0.5f * static_cast<float>(sin(currentTime * frequency)) * steepness;
+
 
 		// Activate shader
 		shaderProgram.Activate();
-		float lightDirectionX = sin(currentTime * 0.8f);
+		float lightDirectionX = static_cast<float>(sin(currentTime * 0.8f));
 		// Set light direction and dynamic light intensity in shader
 		glm::vec3 lightDir = glm::normalize(glm::vec3(lightDirectionX, -1.0f, -1.0f));
 		GLint lightDirLoc = glGetUniformLocation(shaderProgram.ID, "lightDir");
@@ -284,7 +362,7 @@ int main()
 		GLint lightIntensityLoc = glGetUniformLocation(shaderProgram.ID, "lightIntensity");
 		glUniform1f(lightIntensityLoc, lightIntensity);
 
-		if (!gameOver) {
+		if (!isPaused && !gameOver) {
 			// Set background color and clear buffers
 			glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
@@ -306,6 +384,9 @@ int main()
 			unsigned int transformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
 			glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
 
+
+			
+
 			// Draw the spaceship
 			VAO1.Bind();
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -315,10 +396,10 @@ int main()
 			double deltaTime = currentTime - lastAsteroidSpawnIntervalUpdate;
 
 			// Check if 10 seconds have passed
-			if (deltaTime >= 10 && asteroidSpawnInterval > 20.0f)
+			if (deltaTime >= 10 && asteroidSpawnInterval > 10.0f)
 			{
 				// Decrease the spawn interval by a certain amount
-				asteroidSpawnInterval -= 10.0f; // Decrease by 10 frames, adjust as needed
+				asteroidSpawnInterval -= 5.0f; // Decrease by 10 frames, adjust as needed
 
 				lastAsteroidSpawnIntervalUpdate = currentTime;
 			}
@@ -357,7 +438,7 @@ int main()
 			}
 
 		}
-		else {
+		else if(gameOver){
 			// Render game over screen
 			// Clear screen
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Black background
