@@ -39,11 +39,23 @@ struct Asteroid {
 	glm::vec3 scale;
 	float radius;
 	float speed; // Speed of the asteroid
+	bool active;
 
 	Asteroid(glm::vec3 pos, glm::vec3 scl, float rad, float spd)
-		: position(pos), scale(scl), radius(rad), speed(spd) {}
+		: position(pos), scale(scl), radius(rad), speed(spd), active(true) {}
+};
+struct Projectile {
+	glm::vec3 position;
+	glm::vec3 direction;
+	float radius;
+	float speed;
+	bool active;
+
+	Projectile(glm::vec3 pos, glm::vec3 dir, float rad, float spd)
+		: position(pos), direction(dir), radius(rad), speed(spd), active(true) {}
 };
 
+std::vector<Projectile> projectiles;
 
 
 
@@ -73,6 +85,8 @@ const float VIEW_WIDTH = 2.5f; // The width of the visible area you want to see 
 const float VIEW_HEIGHT = VIEW_WIDTH / aspectRatio; // The height will depend on the aspect ratio to avoid stretching
 bool isPaused = false;
 bool escPreviouslyPressed = false;
+const float PROJECTILE_COOLDOWN = 0.5f; // Cooldown time in seconds
+float lastProjectileFireTime = 0.0f; // Time since the last projectile was fired
 
 
 void processInput(GLFWwindow* window) {
@@ -146,6 +160,54 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 	// Update spaceship rotation
 	spaceshipRotation += static_cast<float>(offsetX);
 }
+
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+		double currentTime = glfwGetTime();
+		if (currentTime - lastProjectileFireTime >= PROJECTILE_COOLDOWN) {
+			glm::vec3 projectileDir = glm::vec3(cos(glm::radians(spaceshipRotation + 90)), sin(glm::radians(spaceshipRotation + 90)), 0.0f);
+			projectiles.push_back(Projectile(spaceshipPosition, projectileDir, 0.05f, 0.02f));
+			lastProjectileFireTime = currentTime;
+		}
+	}
+}
+
+void updateProjectiles() {
+	for (auto& projectile : projectiles) {
+		if (projectile.active) {
+			projectile.position += projectile.direction * projectile.speed;
+			// Check if projectile is off-screen and deactivate it
+			if (projectile.position.x < -WORLD_SIZE_X / 2 || projectile.position.x > WORLD_SIZE_X / 2 ||
+				projectile.position.y < -WORLD_SIZE_Y / 2 || projectile.position.y > WORLD_SIZE_Y / 2) {
+				projectile.active = false;
+			}
+		}
+	}
+	// Remove inactive projectiles
+	projectiles.erase(std::remove_if(projectiles.begin(), projectiles.end(), [](const Projectile& p) { return !p.active; }), projectiles.end());
+}
+
+void checkProjectileAsteroidCollisions() {
+	for (auto& projectile : projectiles) {
+		if (!projectile.active) continue;
+		for (auto& asteroid : asteroids) {
+			if (!asteroid.active) continue;
+			float distance = glm::distance(projectile.position, asteroid.position);
+			if (distance < (projectile.radius + asteroid.radius)) {
+				// Collision detected
+				projectile.active = false;
+				asteroid.active = false;
+				// Optionally, add explosion effect or score increment here
+				break; // No need to check other asteroids for this projectile
+			}
+		}
+	}
+	// Remove inactive projectiles and asteroids
+	projectiles.erase(std::remove_if(projectiles.begin(), projectiles.end(), [](const Projectile& p) { return !p.active; }), projectiles.end());
+	asteroids.erase(std::remove_if(asteroids.begin(), asteroids.end(), [](const Asteroid& a) { return !a.active; }), asteroids.end());
+}
+
+
 std::uniform_real_distribution<> disSpeed(0.005f, 0.015f);
 
 void spawnAsteroid() {
@@ -219,6 +281,7 @@ int main()
 	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
 
+
 	
 	// Calculate the center position
 	int monitorX, monitorY;
@@ -232,6 +295,7 @@ int main()
 
 	// Create a windowed mode window with no decorations
 	GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Space Explorer", NULL, NULL);
+	glfwSetMouseButtonCallback(window, mouse_button_callback);
 	if (!window) {
 		std::cout << "Failed to create GLFW window" << std::endl;
 		glfwTerminate();
@@ -303,6 +367,8 @@ int main()
 	Texture normalMap2("Assets/NormalMap2.png", GL_TEXTURE_2D, GL_TEXTURE2, GL_RGBA, GL_UNSIGNED_BYTE);
 	normalMap2.texUnit(shaderProgram, "normalMap2", 3);
 
+	Texture projectileTexture("Assets/Fx_02.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
+	projectileTexture.texUnit(shaderProgram, "tex2", 2);
 
 	double lastTime = glfwGetTime();
 	float lightIntensity = 1.0f;
@@ -336,6 +402,12 @@ int main()
 
 		// Disable the depth test
 		glDisable(GL_DEPTH_TEST);
+
+		// Update the projectile positions and check for collisions
+		updateProjectiles();
+		checkProjectileAsteroidCollisions();
+
+		
 
 		// Calculate time passed
 		double currentTime = glfwGetTime();
@@ -372,24 +444,43 @@ int main()
 			spaceShip.Bind();             // Bind the texture
 			shaderProgram.setInt("tex0", 0);
 			shaderProgram.setBool("isAsteroid", false);
+			shaderProgram.setBool("isProjectile", false);
 			glActiveTexture(GL_TEXTURE3); // Activate the texture unit for the spaceship normal map
 			normalMap2.Bind();
 
 			// Create transformation matrix
-			glm::mat4 transform = glm::mat4(1.0f);
-			transform = glm::translate(transform, spaceshipPosition); // Move the spaceship
-			transform = glm::scale(transform, spaceshipScale); // Scale the spaceship
-			transform = glm::rotate(transform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f)); // rotate the spaceship
-			// Set the transformation matrix in the shader
-			unsigned int transformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
-			glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
-
-
 			
+			glm::mat4 spaceshipTransform = glm::mat4(1.0f);
+			spaceshipTransform = glm::translate(spaceshipTransform, spaceshipPosition);
+			spaceshipTransform = glm::scale(spaceshipTransform, spaceshipScale);
+			spaceshipTransform = glm::rotate(spaceshipTransform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f));
+			unsigned int spaceshipTransformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
+			glUniformMatrix4fv(spaceshipTransformLoc, 1, GL_FALSE, glm::value_ptr(spaceshipTransform));
 
 			// Draw the spaceship
 			VAO1.Bind();
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+
+
+			// Draw projectiles
+			for (auto& projectile : projectiles) {
+				if (!projectile.active) continue;
+				shaderProgram.Activate();
+				glActiveTexture(GL_TEXTURE2);
+				projectileTexture.Bind();
+				shaderProgram.setInt("tex2", 2);
+				shaderProgram.setBool("isAsteroid", false);
+				shaderProgram.setBool("isProjectile", true);
+				glm::mat4 projectileTransform = glm::mat4(1.0f);
+				projectileTransform = glm::translate(projectileTransform, projectile.position);
+				projectileTransform = glm::scale(projectileTransform, glm::vec3(projectile.radius, projectile.radius, projectile.radius));
+				projectileTransform = glm::rotate(projectileTransform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f)); // Rotate the projectile
+				unsigned int projectileTransformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
+				glUniformMatrix4fv(projectileTransformLoc, 1, GL_FALSE, glm::value_ptr(projectileTransform));
+				VAO1.Bind();
+				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+			}
 
 			// Update the timer
 			double currentTime = glfwGetTime();
@@ -426,14 +517,15 @@ int main()
 				normalMap.Bind();             // Bind the texture
 				shaderProgram.setInt("normalMap", 2);
 				shaderProgram.setBool("isAsteroid", true);
+				shaderProgram.setBool("isProjectile", false);
 
 				// Similar to drawing the spaceship, create transformation matrices and draw each asteroid
 				glm::mat4 asteroidTransform = glm::mat4(1.0f);
 				asteroidTransform = glm::translate(asteroidTransform, asteroid.position);
 				asteroidTransform = glm::scale(asteroidTransform, asteroid.scale);
-
+				unsigned int asteroidTransformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
 				// Set transformation matrix in the shader and draw
-				glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
+				glUniformMatrix4fv(asteroidTransformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
 				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 			}
 
