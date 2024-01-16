@@ -89,6 +89,14 @@ const float PROJECTILE_COOLDOWN = 0.5f; // Cooldown time in seconds
 float lastProjectileFireTime = 0.0f; // Time since the last projectile was fired
 
 
+const int numberOfFireFrames = 4; // Number of fire frames
+Texture* fireFrames[numberOfFireFrames];
+float fireAnimationSpeed = 0.1f; // Time in seconds each frame is shown
+float lastFrameTime = 0.0f; // Time when the last frame was changed
+int currentFireFrame = 0; // Current frame index
+bool isAccelerating = false; // Flag to check if spaceship is accelerating
+
+
 void processInput(GLFWwindow* window) {
 	
 	const float deltaTime = 0.01f; // You can use a timer for frame-independent movement
@@ -99,13 +107,18 @@ void processInput(GLFWwindow* window) {
 	// Forward direction based on the spaceship's rotation
 	glm::vec3 forward = glm::vec3(cos(glm::radians(adjustedRotation)), sin(glm::radians(adjustedRotation)), 0.0f);
 
-	// Move forward
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+	// Check if 'W' is pressed for forward movement
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
 		spaceshipPosition += speed * forward * deltaTime;
-
+		isAccelerating = true; // Set isAccelerating to true when moving forward
+	}
+	else {
+		isAccelerating = false; // Set isAccelerating to false when not moving forward
+	}
 	// Move backward
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
 		spaceshipPosition -= speed * forward * deltaTime;
+	}
 	/*if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
 		spaceshipPosition -= speed * right * deltaTime;
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
@@ -370,8 +383,18 @@ int main()
 	Texture projectileTexture("Assets/Fx_02.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
 	projectileTexture.texUnit(shaderProgram, "tex2", 2);
 
+	
+
 	double lastTime = glfwGetTime();
 	float lightIntensity = 1.0f;
+
+	for (int i = 0; i < numberOfFireFrames; ++i) {
+		fireFrames[i] = new Texture(("Assets/fire_" + std::to_string(i + 1) + ".png").c_str(), GL_TEXTURE_2D, GL_TEXTURE0 + 3 + i, GL_RGBA, GL_UNSIGNED_BYTE);
+		fireFrames[i]->texUnit(shaderProgram, ("tex" + std::to_string(3 + i)).c_str(), 3 + i);
+	}
+	for (int i = 0; i < numberOfFireFrames; ++i) {
+		shaderProgram.setInt("fireTextures[" + std::to_string(i) + "]", 3 + i);
+	}
 
 
 	// Main loop
@@ -422,7 +445,12 @@ int main()
 		// Clamp the light intensity to stay within the range [0.0, 1.0]
 		lightIntensity = 0.5f + 0.5f * static_cast<float>(sin(currentTime * frequency)) * steepness;
 
-
+		// Update fire animation frame
+		currentTime = glfwGetTime();
+		if (currentTime - lastFrameTime >= fireAnimationSpeed && isAccelerating) {
+			currentFireFrame = (currentFireFrame + 1) % numberOfFireFrames;
+			lastFrameTime = currentTime;
+		}
 		// Activate shader
 		shaderProgram.Activate();
 		float lightDirectionX = static_cast<float>(sin(currentTime * 0.8f));
@@ -439,14 +467,17 @@ int main()
 			glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
+			// Draw the spaceship
 			shaderProgram.Activate();
-			glActiveTexture(GL_TEXTURE0); // Activate the texture unit
+			glActiveTexture(GL_TEXTURE0); // Activate the texture unit for the spaceship
 			spaceShip.Bind();             // Bind the texture
 			shaderProgram.setInt("tex0", 0);
 			shaderProgram.setBool("isAsteroid", false);
 			shaderProgram.setBool("isProjectile", false);
-			glActiveTexture(GL_TEXTURE3); // Activate the texture unit for the spaceship normal map
-			normalMap2.Bind();
+			shaderProgram.setBool("isFire", false); // Ensure the fire flag is set to false for spaceship
+			glActiveTexture(GL_TEXTURE2); // Activate the texture unit for the spaceship normal map
+			normalMap2.Bind();            // Bind the normal map
+			shaderProgram.setInt("normalMap2", 2);
 
 			// Create transformation matrix
 			
@@ -461,7 +492,50 @@ int main()
 			VAO1.Bind();
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+			if (isAccelerating) {
+				// Activate the shader and set the current fire frame index
+				shaderProgram.Activate();
+				GLint currentFireFrameLocation = glGetUniformLocation(shaderProgram.ID, "currentFireFrame");
+				glUniform1i(currentFireFrameLocation, currentFireFrame);
 
+				// Start with an identity matrix
+				glm::mat4 fireTransform = glm::mat4(1.0f);
+
+				// First, translate the fire to be at the spaceship's position
+				fireTransform = glm::translate(fireTransform, spaceshipPosition);
+
+				// Then, apply the rotation to the fire to match the spaceship's rotation
+				fireTransform = glm::rotate(fireTransform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f));
+
+				// Now translate the fire behind the spaceship, this will now use the rotated axis
+				fireTransform = glm::translate(fireTransform, glm::vec3(0.0f, -0.065f, 0.0f)); // Adjust the offset if needed
+
+				// Scale the fire as needed
+				fireTransform = glm::scale(fireTransform, glm::vec3(0.035f, 0.035f, 0.035f));
+
+				
+				// Set the transformation matrix for the fire
+				GLint fireTransformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
+				glUniformMatrix4fv(fireTransformLoc, 1, GL_FALSE, glm::value_ptr(fireTransform));
+
+				// Activate the texture unit and bind the correct fire texture
+				int fireTexUnit = 3 + currentFireFrame; // This will be 3, 4, 5, or 6
+				glActiveTexture(GL_TEXTURE0 + fireTexUnit); // This activates the correct texture unit
+				fireFrames[currentFireFrame]->Bind(); // Binds the correct fire frame texture
+				glUniform1i(glGetUniformLocation(shaderProgram.ID, ("tex" + std::to_string(fireTexUnit)).c_str()), fireTexUnit);
+
+				
+				// Set flags for shader to indicate that fire is being drawn
+				glUniform1i(glGetUniformLocation(shaderProgram.ID, "isFire"), (isAccelerating) ? GL_TRUE : GL_FALSE);
+				glUniform1i(glGetUniformLocation(shaderProgram.ID, "isAsteroid"), GL_FALSE);
+				glUniform1i(glGetUniformLocation(shaderProgram.ID, "isProjectile"), GL_FALSE);
+
+				// Draw fire
+				// Assuming that you have a quad VAO bound already that you can use to draw the fire
+				VAO1.Bind();
+				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+			}
+			
 
 			// Draw projectiles
 			for (auto& projectile : projectiles) {
@@ -528,7 +602,7 @@ int main()
 				glUniformMatrix4fv(asteroidTransformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
 				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 			}
-
+			
 		}
 		else if(gameOver){
 			// Render game over screen
@@ -545,7 +619,10 @@ int main()
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
-
+	// Don't forget to deallocate memory at the end of your program
+	for (int i = 0; i < numberOfFireFrames; ++i) {
+		delete fireFrames[i];
+	}
 	// Delete all the objects we've created
 	VAO1.Delete();
 	VBO1.Delete();
