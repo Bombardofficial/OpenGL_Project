@@ -74,7 +74,7 @@ glm::vec3 spaceshipScale = glm::vec3(0.2f, 0.2f, 0.2f); // Adjust scale as neede
 float spaceshipRotation = 0.0f;
 void processInput(GLFWwindow* window);
 bool gameOver = false;
-float spaceshipCollisionRadius = 0.01f; // Adjust based on spaceship size
+float spaceshipCollisionRadius = 0.02f; // Adjust based on spaceship size
 float asteroidCollisionRadius = 0.02f; // Adjust based on asteroid size, might vary per asteroid
 const float WORLD_SIZE_X = 50.0f; // Adjust as needed
 const float WORLD_SIZE_Y = 50.0f; // Adjust as needed
@@ -107,7 +107,7 @@ float enemyCollisionRadius = 0.1f; // Adjust based on enemy size
 
 const float ENEMY_SPAWN_COOLDOWN = 5.0f; // Spawn an enemy every 5 seconds
 float lastEnemySpawnTime = 0.0f;
-const float ENEMY_SHOOT_COOLDOWN = 2.0f;
+const float ENEMY_SHOOT_COOLDOWN = 3.0f;
 // Function to generate a random float between two values
 float randomFloat(float a, float b) {
 	return a + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (b - a)));
@@ -124,29 +124,37 @@ struct Enemy {
 	float shootingRange; // Maximum distance for shooting at the player
 	float stoppingDistance; // Distance to stop moving towards the player
 
+	float shootCooldown; // New member for individual shooting cooldown
+
 	Enemy(glm::vec3 pos, float spd, float rad = 0.1f)
 		: position(pos), speed(spd), active(true), radius(rad), lastShootTime(0.0f), rotation(0.0f) {
-		minimumDistance = 0.5f; // Set your desired minimum distance
-		shootingRange = VIEW_WIDTH / 4; // Set your desired shooting range
-		stoppingDistance = randomFloat(minimumDistance, shootingRange); // Random stopping distance
+		minimumDistance = 0.5f;
+		shootingRange = VIEW_WIDTH / 4;
+		stoppingDistance = randomFloat(minimumDistance, shootingRange);
 		direction = glm::normalize(spaceshipPosition - pos);
+
+		// Initialize shootCooldown with a random value between 3 and 5
+		shootCooldown = randomFloat(3.0f, 5.0f);
 	}
 
 	void update(float deltaTime) {
-		glm::vec3 toPlayer = spaceshipPosition - position;
-		float distanceToPlayer = glm::length(toPlayer);
+		if (!isPaused) {
+			glm::vec3 toPlayer = spaceshipPosition - position;
+			float distanceToPlayer = glm::length(toPlayer);
 
-		// Move towards the player only if outside of stoppingDistance
-		if (distanceToPlayer > stoppingDistance) {
-			direction = glm::normalize(toPlayer);
-			position += direction * speed * deltaTime;
-		}
-		else {
-			direction = glm::vec3(0.0f); // Stop moving
-		}
+			// Move towards the player only if outside of stoppingDistance
+			if (distanceToPlayer > stoppingDistance) {
+				direction = glm::normalize(toPlayer);
+				position += direction * speed * deltaTime;
+			}
+			else {
+				direction = glm::vec3(0.0f); // Stop moving
+			}
 
-		// Update rotation to face the player
-		rotation = glm::degrees(atan2(toPlayer.y, toPlayer.x)) - 90.0f;
+			// Update rotation to face the player
+			rotation = glm::degrees(atan2(toPlayer.y, toPlayer.x)) - 90.0f;
+		}
+		
 	}
 	
 };
@@ -215,6 +223,7 @@ void processInput(GLFWwindow* window) {
 }
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+	
 	static float lastX = 1200 / 2.0;
 	static float lastY = 1200 / 2.0;
 
@@ -232,18 +241,20 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+	
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
 		double currentTime = glfwGetTime();
 		if (currentTime - lastProjectileFireTime >= PROJECTILE_COOLDOWN) {
 			glm::vec3 projectileDir = glm::vec3(cos(glm::radians(spaceshipRotation + 90)), sin(glm::radians(spaceshipRotation + 90)), 0.0f);
 			// Adjust the projectile radius here
 			projectiles.push_back(Projectile(spaceshipPosition, projectileDir, 0.05f, 0.02f, 0.01f, Owner::Player));
-			lastProjectileFireTime = currentTime;
+			lastProjectileFireTime = static_cast<float>(currentTime);
 		}
 	}
 }
 
 void updateProjectiles() {
+	
 	for (auto& projectile : projectiles) {
 		if (projectile.active) {
 			projectile.position += projectile.direction * projectile.speed;
@@ -259,6 +270,7 @@ void updateProjectiles() {
 }
 
 void checkProjectileAsteroidCollisions() {
+	
 	for (auto& projectile : projectiles) {
 		if (!projectile.active || projectile.owner != Owner::Player) continue; // Only check player projectiles
 
@@ -282,6 +294,7 @@ void checkProjectileAsteroidCollisions() {
 std::uniform_real_distribution<> disSpeed(0.005f, 0.015f);
 
 void spawnAsteroid() {
+	
 	const float spawnMargin = 0.8f; // Adjust as needed
 
 	// Calculate the spawn bounds
@@ -315,6 +328,8 @@ void spawnAsteroid() {
 }
 
 bool checkCollision(const Asteroid& asteroid) {
+	
+	
 	glm::vec2 spaceshipCenter(spaceshipPosition.x, spaceshipPosition.y);
 	glm::vec2 asteroidCenter(asteroid.position.x, asteroid.position.y);
 
@@ -325,6 +340,7 @@ bool checkCollision(const Asteroid& asteroid) {
 }
 
 void updateAsteroids() {
+	
 	for (auto& asteroid : asteroids) {
 		asteroid.position.y -= asteroid.speed; // Use the asteroid's individual speed
 
@@ -338,23 +354,23 @@ void updateAsteroids() {
 
 
 void spawnEnemy() {
-	
-	std::uniform_real_distribution<float> distX(-VIEW_WIDTH / 2, VIEW_WIDTH / 2);
-	std::uniform_real_distribution<float> distY(-VIEW_HEIGHT / 2, VIEW_HEIGHT / 2);
+	// Define the offset limits for spawning enemies
+	float spawnOffsetX = VIEW_WIDTH / 2 + 1.0f; // Spawn beyond half the view width
+	float spawnOffsetY = VIEW_HEIGHT / 2 + 1.0f; // Spawn beyond half the view height
 
-	float offsetX, offsetY;
+	std::uniform_real_distribution<float> distX(-spawnOffsetX, spawnOffsetX);
+	std::uniform_real_distribution<float> distY(-spawnOffsetY, spawnOffsetY);
+
 	glm::vec3 enemyPos;
 	do {
-		offsetX = distX(gen);
-		offsetY = distY(gen);
+		float offsetX = distX(gen);
+		float offsetY = distY(gen);
 		enemyPos = spaceshipPosition + glm::vec3(offsetX, offsetY, 0.0f);
-	} while (glm::distance(enemyPos, spaceshipPosition) < 1.0f);
-
+	} while (glm::distance(enemyPos, spaceshipPosition) < spawnOffsetX); // Ensure the enemy is outside the view
 
 	float speed = 0.02f; // Adjust the speed as needed
-
 	Enemy newEnemy(enemyPos, speed);
-	newEnemy.radius = enemyCollisionRadius;
+	newEnemy.radius = enemyCollisionRadius + 0.2f;
 	newEnemy.lastShootTime = glfwGetTime();
 	// Set a random minimum distance for each enemy to prevent clustering
 	std::uniform_real_distribution<float> distMin(0.5f, VIEW_WIDTH / 4);
@@ -364,10 +380,11 @@ void spawnEnemy() {
 }
 
 void enemyShoot(Enemy& enemy) {
+	
 	float shootDistance = glm::distance(enemy.position, spaceshipPosition);
-	float shootingRange = VIEW_WIDTH * 0.5f; // Enemies will shoot if they are within half the view width
+	float shootingRange = VIEW_WIDTH * 0.3f; // Enemies will shoot if they are within half the view width
 
-	if (shootDistance <= shootingRange && glfwGetTime() - enemy.lastShootTime >= ENEMY_SHOOT_COOLDOWN) {
+	if (shootDistance <= shootingRange && glfwGetTime() - enemy.lastShootTime >= enemy.shootCooldown) {
 		glm::vec3 projectileDirection = glm::normalize(spaceshipPosition - enemy.position);
 
 		// Introduce randomness in shooting for each shot
@@ -381,10 +398,10 @@ void enemyShoot(Enemy& enemy) {
 
 		float projectileSpeed = 0.02f; // Set the projectile speed
 		// Enemy shoots a projectile towards the player with some randomness
-		glm::vec3 spawnPosition = enemy.position + projectileDirection * (enemy.radius - 0.07f);
+		glm::vec3 spawnPosition = enemy.position + projectileDirection * (enemy.radius);
 		projectiles.push_back(Projectile(enemy.position, projectileDirection, 0.05f, 0.02f, 0.01f, Owner::Enemy));
 
-		enemy.lastShootTime = glfwGetTime(); // Update the last shoot time
+		enemy.lastShootTime = static_cast<float>(glfwGetTime()); // Update the last shoot time
 	}
 }
 
@@ -392,6 +409,7 @@ void enemyShoot(Enemy& enemy) {
 
 float enemyProjectileCollisionRadius = 0.1f;
 void checkEnemyProjectileCollisions() {
+	
 	for (auto& projectile : projectiles) {
 		if (!projectile.active) continue; // Skip inactive projectiles
 
@@ -401,7 +419,7 @@ void checkEnemyProjectileCollisions() {
 				if (!enemy.active) continue; // Skip inactive enemies
 
 				float distance = glm::distance(projectile.position, enemy.position);
-				if (distance < (projectile.collisionRadius + enemy.radius)) {
+				if (distance < (projectile.collisionRadius + enemy.radius - 0.25)) {
 					projectile.active = false;
 					enemy.active = false;
 					// Handle collision (e.g., score increment, effects, etc.)
@@ -425,6 +443,7 @@ void checkEnemyProjectileCollisions() {
 
 
 void checkProjectilePlayerCollision() {
+	
 	for (auto& projectile : projectiles) {
 		if (!projectile.active || projectile.owner == Owner::Player) continue; // Ignore inactive or player-owned projectiles
 
@@ -440,6 +459,10 @@ void checkProjectilePlayerCollision() {
 }
 
 void updateEnemies(float deltaTime) {
+	if (isPaused) {
+		
+		return;
+	}
 	for (auto& enemy : enemies) {
 		if (!enemy.active) continue;
 
@@ -573,7 +596,7 @@ int main()
 	Texture projectileTexture("Assets/Fx_02.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
 	projectileTexture.texUnit(shaderProgram, "tex2", 2);
 
-	Texture enemyTexture("Assets/enemy.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
+	Texture enemyTexture("Assets/enemy2.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGBA, GL_UNSIGNED_BYTE);
 	enemyTexture.texUnit(shaderProgram, "tex7", 7);
 
 	Texture enemyNormalMap("Assets/NormalMap3.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
@@ -591,7 +614,9 @@ int main()
 	}
 
 	srand(static_cast<unsigned int>(time(nullptr)));
-	
+
+	std::uniform_real_distribution<> spawnTimeDist(5.0, 15.0); // Distribution for random spawn time
+	double nextSpawnTime = lastTime + spawnTimeDist(gen);
 
 	// Main loop
 	while (!glfwWindowShouldClose(window))
@@ -600,6 +625,11 @@ int main()
 		// Process input
 		processInput(window);
 		
+		if (isPaused) {
+			glfwPollEvents();
+			continue;
+		}
+
 		// Start with an identity matrix each frame
 		glm::mat4 view = glm::mat4(1.0f);
 
@@ -621,22 +651,32 @@ int main()
 
 		// Disable the depth test
 		glDisable(GL_DEPTH_TEST);
-
-		// Update the projectile positions and check for collisions
-		updateProjectiles();
-		checkProjectileAsteroidCollisions();
-		checkEnemyProjectileCollisions();
-		
-
 		// Calculate time passed
 		double currentTime = glfwGetTime();
 		float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
 
+		
+		if (currentTime >= nextSpawnTime) {
+			spawnEnemy();
+			nextSpawnTime = currentTime + spawnTimeDist(gen); // Set next spawn time
+		}
+
+		if (!isPaused) {
+			// Update the projectile positions and check for collisions
+			updateProjectiles();
+			checkProjectileAsteroidCollisions();
+			checkEnemyProjectileCollisions();
+			updateEnemies(deltaTime);
+			// Update asteroid positions
+			updateAsteroids();
+		}
+
+
 		// Update light intensity dynamically
 		float frequency = 0.2f;
 		float steepness = 3.0f;
-		lightIntensity = 0.5f + 0.5f * sin(currentTime * frequency) * steepness;
+		lightIntensity = 0.5f + 0.5f * static_cast<float>(sin(currentTime * frequency)) * steepness;
 			
 		// Clamp the light intensity to stay within the range [0.0, 1.0]
 		lightIntensity = 0.5f + 0.5f * static_cast<float>(sin(currentTime * frequency)) * steepness;
@@ -645,7 +685,7 @@ int main()
 		currentTime = glfwGetTime();
 		if (currentTime - lastFrameTime >= fireAnimationSpeed && isAccelerating) {
 			currentFireFrame = (currentFireFrame + 1) % numberOfFireFrames;
-			lastFrameTime = currentTime;
+			lastFrameTime = static_cast<float>(currentTime);
 		}
 		// Activate shader
 		shaderProgram.Activate();
@@ -659,7 +699,7 @@ int main()
 		glUniform1f(lightIntensityLoc, lightIntensity);
 
 
-		if (!isPaused && !gameOver) {
+		if (!gameOver) {
 			// Set background color and clear buffers
 			glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
@@ -749,7 +789,11 @@ int main()
 				glm::mat4 projectileTransform = glm::mat4(1.0f);
 				projectileTransform = glm::translate(projectileTransform, projectile.position);
 				projectileTransform = glm::scale(projectileTransform, glm::vec3(projectile.radius, projectile.radius, projectile.radius));
-				projectileTransform = glm::rotate(projectileTransform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f)); // Rotate the projectile
+
+				// Check the owner of the projectile and apply rotation only to the player's projectiles
+				if (projectile.owner == Owner::Player) {
+					projectileTransform = glm::rotate(projectileTransform, glm::radians(spaceshipRotation), glm::vec3(0.0f, 0.0f, 1.0f));
+				}
 				unsigned int projectileTransformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
 				glUniformMatrix4fv(projectileTransformLoc, 1, GL_FALSE, glm::value_ptr(projectileTransform));
 				VAO1.Bind();
@@ -759,21 +803,22 @@ int main()
 			if (currentTime - lastEnemySpawnTime >= ENEMY_SPAWN_COOLDOWN) {
 				std::cout << "Spawning enemy at time: " << currentTime << std::endl; // Debug statement
 				spawnEnemy(); // Call the function to spawn an enemy
-				lastEnemySpawnTime = currentTime; // Reset the timer
+				lastEnemySpawnTime = static_cast<float>(currentTime); // Reset the timer
 			}
 
-			updateEnemies(deltaTime);
+			
 
 			for (auto& enemy: enemies) {
 				if (enemy.active) {
 					std::cout << "Drawing enemy at position: " << glm::to_string(enemy.position) << std::endl;
 					shaderProgram.Activate();
+					
 					glActiveTexture(GL_TEXTURE7);
 					enemyTexture.Bind();
 					shaderProgram.setInt("tex7", 7);
 					glActiveTexture(GL_TEXTURE8);
-					enemyNormalMap.Bind();
-					shaderProgram.setInt("normalMap3", 8);
+					//enemyNormalMap.Bind();
+					//shaderProgram.setInt("normalMap3", 8);
 					shaderProgram.setBool("isAsteroid", false);
 					shaderProgram.setBool("isProjectile", false);
 					shaderProgram.setBool("isFire", false);
@@ -829,9 +874,7 @@ int main()
 				spawnAsteroid();
 			}
 			frameCount++;
-
-			// Update asteroid positions
-			updateAsteroids();
+			
 
 			// Draw asteroids
 			for (auto& asteroid : asteroids) {

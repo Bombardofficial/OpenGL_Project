@@ -48,11 +48,10 @@ void main() {
         FragColor = vec4(texColor.rgb, texColor.a);
         return;
     } else if (isEnemy) {
-        vec3 texNormal = texture(normalMap3, texCoord).rgb;
-		texNormal = normalize(texNormal * 2.0 - 1.0);
-		norm = texNormal;
-		texColor = texture(tex7, texCoord); // Fetch the enemy texture color
-		materialColor = texColor.rgb;
+		texColor = texture(tex7, texCoord); // Fetch the projectile texture color
+        vec3 brightColor = texColor.rgb; // Use the RGB color from the texture
+        FragColor = vec4(brightColor, texColor.a); // Set the final color with full brightness
+        return; // Skip the rest of the lighting calculations
     }else {
         // Assume it's the spaceship
         vec3 texNormal = texture(normalMap2, texCoord).rgb;
