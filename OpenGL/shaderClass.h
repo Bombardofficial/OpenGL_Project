@@ -7,6 +7,7 @@
 #include <sstream>
 #include <iostream>
 #include <cerrno>
+#include <glm/fwd.hpp>
 
 std::string get_file_contents(const char* filename);
 
@@ -24,6 +25,9 @@ public:
 	void Delete();
 	void setInt(const std::string& name, int value);
 	void setBool(const std::string& name, bool value);
+	void setMat4(const std::string& name, const glm::mat4& mat);
+	void setVec2(const std::string& name, const glm::vec2& vec);
+	void setVec3(const std::string& name, const glm::vec3& vec);
 private:
 	// Checks if the different Shaders have compiled properly
 	void compileErrors(unsigned int shader, const char* type);
