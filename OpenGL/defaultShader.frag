@@ -51,8 +51,6 @@ void main() {
             norm = texNormal;
             // Use the explosion texture if the asteroid is exploding
             texColor = texture(explosionTextures[currentExplosionFrame], texCoord);
-            //FragColor = vec4(texColor.rgb, texColor.a); // Render the explosion frame
-            //return; // Skip the rest of the lighting calculations
             materialColor = texColor.rgb;
         } else {
             vec3 texNormal = texture(normalMap, texCoord).rgb;

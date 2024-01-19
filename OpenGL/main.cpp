@@ -42,7 +42,9 @@ GLuint indices[] =
 	0, 2, 1, // Upper triangle
 	0, 3, 2 // Lower triangle
 };
-
+const int numberOfExplosionFrames = 5; // Number of explosion frames
+Texture* explosionFrames[numberOfExplosionFrames];
+float explosionAnimationSpeed = 0.05f; // Time in seconds each frame is shown
 struct Asteroid {
 	glm::vec3 position;
 	glm::vec3 scale;
@@ -50,10 +52,33 @@ struct Asteroid {
 	float speed; // Speed of the asteroid
 	bool active;
 	bool isExploding = false;
-	float explosionAnimationTime = 0.3f; // Current time in the explosion animation
+	float explosionAnimationTime = 0.0f; // Current time in the explosion animation
 	int currentExplosionFrame = 0;
+	float explosionFixedDeltaTime = 1.0f / 100.0f;
 	Asteroid(glm::vec3 pos, glm::vec3 scl, float rad, float spd)
 		: position(pos), scale(scl), radius(rad), speed(spd), active(true), isExploding(false) {}
+
+	void update(float deltaTime) {
+		if (isExploding) {
+			explosionAnimationTime += explosionFixedDeltaTime;
+			if (explosionAnimationTime >= explosionAnimationSpeed) {
+				if (currentExplosionFrame < numberOfExplosionFrames - 1) {
+					currentExplosionFrame++;
+				}
+				else {
+					// Last frame already displayed, so mark the asteroid inactive
+					active = false;
+					isExploding = false;
+					return; // Important: Return here to avoid further processing
+				}
+				explosionAnimationTime = 0.0f;
+			}
+		}
+		else {
+			position.y -= speed; // Normal movement
+		}
+
+	}
 };
 enum class Owner {
 	Player,
@@ -110,10 +135,10 @@ double gameStartTime = glfwGetTime();
 int spaceshipLives = 2; // Start with two lives
 const int numberOfFireFrames = 4; // Number of fire frames
 Texture* fireFrames[numberOfFireFrames];
-const int numberOfExplosionFrames = 5; // Number of explosion frames
-Texture* explosionFrames[numberOfExplosionFrames];
+
 float fireAnimationSpeed = 0.1f; // Time in seconds each frame is shown
-float explosionAnimationSpeed = 0.5f; // Time in seconds each frame is shown
+
+
 float lastFrameTime = 0.0f; // Time when the last frame was changed
 int currentFireFrame = 0; // Current frame index
 bool isAccelerating = false; // Flag to check if spaceship is accelerating
@@ -127,7 +152,8 @@ double lastBigEnemySpawnTime = 0.0;
 bool bossEnemySpawned = false;
 double lastBossEnemySpawnTime = 0.0;
 
-
+double lastAsteroidSpawnIntervalUpdate = glfwGetTime();
+float asteroidSpawnInterval = 60.0f;
 
 
 
@@ -210,10 +236,15 @@ void initializeGameState(std::vector<Projectile>& projectiles,
 	std::vector<Enemy>& enemies,
 	glm::vec3& spaceshipPosition,
 	int& spaceshipLives) {
-	// Initial spaceship position and lives
+	// Reset spaceship state
 	spaceshipPosition = glm::vec3(0.0f, 0.0f, 0.0f);
 	spaceshipLives = 2;
+	spaceshipRotation = 0.0f;  // Reset spaceship rotation
+	isAccelerating = false;    // Reset spaceship acceleration state
+
+	// Reset boost charge
 	boostCharge = 1.0f; // Fully charged
+
 	// Clear existing game objects
 	projectiles.clear();
 	asteroids.clear();
@@ -224,12 +255,20 @@ void initializeGameState(std::vector<Projectile>& projectiles,
 	lastBigEnemySpawnTime = 0.0f;
 	lastBossEnemySpawnTime = 0.0f;
 
-	// Reset other game states as needed
-	// ...
+	// Reset game control flags
+	gameOver = false;
+	isPaused = false;
 
-	// If you have any more setup such as initial asteroid and enemy placement, include it here
-	// ...
+	// Reset asteroid spawn interval
+	asteroidSpawnInterval = 60.0f;
+	lastAsteroidSpawnIntervalUpdate = glfwGetTime();  // Reset interval update timer
+
+	// Reset game start time
+	gameStartTime = glfwGetTime();
+
+	// Add any additional state resets here...
 }
+
 
 
 void processInput(GLFWwindow* window) {
@@ -417,14 +456,14 @@ bool checkCollision(const Asteroid& asteroid) {
 }
 
 void updateAsteroids() {
-	
 	for (auto& asteroid : asteroids) {
 		asteroid.position.y -= asteroid.speed; // Use the asteroid's individual speed
 
-		if (checkCollision(asteroid)) {
+		// Check for collision only if the asteroid is active and not exploding
+		if (asteroid.active && !asteroid.isExploding && checkCollision(asteroid)) {
 			gameOver = true;
 			break;
-		}	
+		}
 	}
 }
 
@@ -464,11 +503,7 @@ void enemyShoot(Enemy& enemy) {
 	// Calculate distance from the enemy to the spaceship
 	float shootDistance = glm::distance(enemy.position, spaceshipPosition);
 	// Debugging statement to check shooting conditions
-	cout << "Enemy Type: " << (enemy.isBoss ? "Boss" : enemy.isBig ? "Big" : "Normal")
-		<< ", Distance: " << shootDistance
-		<< ", Shooting Range: " << enemy.shootingRange
-		<< ", Time Since Last Shot: " << (glfwGetTime() - enemy.lastShootTime)
-		<< endl;
+
 	// Check if the enemy can shoot based on the distance and cooldown
 	if (shootDistance <= enemy.shootingRange && glfwGetTime() - enemy.lastShootTime >= enemy.shootCooldown) {
 		// Calculate the projectile direction towards the player with some randomness
@@ -494,7 +529,6 @@ void enemyShoot(Enemy& enemy) {
 
 		// Update the last shoot time
 		enemy.lastShootTime = static_cast<float>(glfwGetTime());
-		cout << "Boss shooting at time: " << enemy.lastShootTime << endl;
 	}
 }
 
@@ -656,8 +690,6 @@ int main()
 	// Set up the viewport
 	glViewport(0, 0, windowWidth, windowHeight);
 
-	double lastAsteroidSpawnIntervalUpdate = glfwGetTime();
-	float asteroidSpawnInterval = 60.0f;
 	
 	glm::mat4 projection = glm::ortho(-VIEW_WIDTH / 2, VIEW_WIDTH / 2, -VIEW_HEIGHT / 2, VIEW_HEIGHT / 2);
 
@@ -739,9 +771,15 @@ int main()
 	for (int i = 0; i < numberOfFireFrames; ++i) {
 		shaderProgram.setInt("fireTextures[" + std::to_string(i) + "]", 3 + i);
 	}
-
+	for (int i = 0; i < numberOfExplosionFrames; ++i) {
+		explosionFrames[i] = nullptr;
+	}
 	for (int i = 0; i < numberOfExplosionFrames; ++i) {
 		explosionFrames[i] = new Texture(("Assets/asteroidexp" + std::to_string(i + 1) + ".png").c_str(), GL_TEXTURE_2D, GL_TEXTURE0 + 17 + i, GL_RGBA, GL_UNSIGNED_BYTE);
+		if (explosionFrames[i] != nullptr) {
+			std::cerr << "Failed to load texture for frame " << i << std::endl;
+			// Handle the error, possibly by setting the pointer to nullptr or exiting
+		}
 		explosionFrames[i]->texUnit(shaderProgram, ("tex" + std::to_string(17 + i)).c_str(), 17 + i);
 	}
 	for (int i = 0; i < numberOfExplosionFrames; ++i) {
@@ -1095,32 +1133,37 @@ int main()
 			}
 			frameCount++;
 			
-
+			
 			// Draw asteroids
 			for (auto& asteroid : asteroids) {
 
 				shaderProgram.Activate();
 				
 				if (asteroid.isExploding) {
-					// Update the explosion animation
-					asteroid.explosionAnimationTime += deltaTime;
-					if (asteroid.explosionAnimationTime >= explosionAnimationSpeed) {
-						asteroid.currentExplosionFrame++;
-						if (asteroid.currentExplosionFrame >= numberOfExplosionFrames) {
-							asteroid.active = false; // End the explosion and deactivate the asteroid
-							continue; // Skip rendering this asteroid
+					std::cout << "Explosion frame: " << asteroid.currentExplosionFrame << std::endl;
+					if (asteroid.currentExplosionFrame < numberOfExplosionFrames && explosionFrames[asteroid.currentExplosionFrame] != nullptr) {
+						
+						asteroid.update(deltaTime);
+
+						int explosionTexUnit = 17 + asteroid.currentExplosionFrame;
+						glActiveTexture(GL_TEXTURE0 + explosionTexUnit);
+						if (asteroid.currentExplosionFrame >= 0 && asteroid.currentExplosionFrame < numberOfExplosionFrames) {
+							if (explosionFrames[asteroid.currentExplosionFrame] &&
+								glIsTexture(explosionFrames[asteroid.currentExplosionFrame]->ID)) {
+								explosionFrames[asteroid.currentExplosionFrame]->Bind();
+							}
 						}
-						asteroid.explosionAnimationTime = 0.0f;
+						else {
+							std::cerr << "Error: Explosion frame out of range: " << asteroid.currentExplosionFrame << std::endl;
+						}
+
+						shaderProgram.setInt("currentExplosionFrame", asteroid.currentExplosionFrame);
+						shaderProgram.setBool("isExploding", true);
 					}
-
-					// Bind the correct explosion frame texture
-					int explosionTexUnit = 17 + asteroid.currentExplosionFrame;
-					glActiveTexture(GL_TEXTURE0 + explosionTexUnit);
-					explosionFrames[asteroid.currentExplosionFrame]->Bind();
-					glUniform1i(glGetUniformLocation(shaderProgram.ID, ("tex" + std::to_string(explosionTexUnit)).c_str()), explosionTexUnit);
-
-					shaderProgram.setInt("currentExplosionFrame", asteroid.currentExplosionFrame);
-					shaderProgram.setBool("isExploding", asteroid.isExploding);
+					else {
+						std::cout << "Error: Invalid texture frame access." << std::endl;
+					}
+					
 				}
 				else {
 					glActiveTexture(GL_TEXTURE1); // Activate the texture unit
@@ -1142,6 +1185,8 @@ int main()
 				// Set transformation matrix in the shader and draw
 				glUniformMatrix4fv(asteroidTransformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
 				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+				//shaderProgram.setBool("isAsteroid", false);
+				
 			}
 			
 		}
@@ -1165,7 +1210,10 @@ int main()
 		delete fireFrames[i];
 	}
 	for (int i = 0; i < numberOfExplosionFrames; ++i) {
-		delete explosionFrames[i];
+		if (explosionFrames[i] != nullptr) {
+			delete explosionFrames[i];
+			explosionFrames[i] = nullptr;
+		}
 	}
 	
 	// Delete all the objects we've created
