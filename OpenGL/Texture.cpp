@@ -53,9 +53,13 @@ void Texture::texUnit(Shader& shader, const char* uniform, GLuint unit)
 	glUniform1i(texUni, unit);
 }
 
-void Texture::Bind()
-{
-	glBindTexture(type, ID);
+void Texture::Bind() {
+	if (glIsTexture(ID)) { // Check if ID is a texture
+		glBindTexture(type, ID);
+	}
+	else {
+		std::cerr << "Attempt to bind a texture that doesn't exist with ID: " << ID << std::endl;
+	}
 }
 
 void Texture::Unbind()

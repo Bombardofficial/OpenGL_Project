@@ -1,4 +1,5 @@
 #include "shaderClass.h"
+#include <glm/gtc/type_ptr.hpp>
 
 // Reads a text file and outputs a string with everything in the text file
 std::string get_file_contents(const char* filename)
@@ -111,4 +112,17 @@ void Shader::compileErrors(unsigned int shader, const char* type)
 	}
 
 
+}
+
+// In shaderClass.cpp
+void Shader::setMat4(const std::string& name, const glm::mat4& mat) {
+	glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, glm::value_ptr(mat));
+}
+
+void Shader::setVec2(const std::string& name, const glm::vec2& vec) {
+	glUniform2fv(glGetUniformLocation(ID, name.c_str()), 1, glm::value_ptr(vec));
+}
+
+void Shader::setVec3(const std::string& name, const glm::vec3& vec) {
+	glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, glm::value_ptr(vec));
 }
