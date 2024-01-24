@@ -13,6 +13,7 @@ uniform sampler2D tex4; // Texture unit for the fire2 texture
 uniform sampler2D tex5; // Texture unit for the fire3 texture
 uniform sampler2D tex6; // Texture unit for the fire4 texture
 uniform sampler2D tex7; // Texture unit for the enemy texture
+uniform sampler2D star; // Texture unit for the star texture
 uniform sampler2D normalMap; // Normal map for the asteroid
 uniform sampler2D normalMap2; // Normal map for the spaceship
 uniform sampler2D normalMap3; // Normal map for the enemy
@@ -24,6 +25,7 @@ uniform bool isFire; // Flag to indicate if the current object is fire
 uniform sampler2D fireTextures[4];
 uniform int currentFireFrame; // Uniform declaration in the fragment shader
 uniform bool isEnemy; // Flag to indicate if the current object is an enemy
+uniform bool isStar; // Flag to indicate if the current object is a star
 
 void main() {
     vec3 norm = normalize(Normal);
@@ -49,6 +51,11 @@ void main() {
         return;
     } else if (isEnemy) {
 		texColor = texture(tex7, texCoord); // Fetch the projectile texture color
+        vec3 brightColor = texColor.rgb; // Use the RGB color from the texture
+        FragColor = vec4(brightColor, texColor.a); // Set the final color with full brightness
+        return; // Skip the rest of the lighting calculations
+    } else if (isStar) {
+        texColor = texture(star, texCoord); // Fetch the star texture color
         vec3 brightColor = texColor.rgb; // Use the RGB color from the texture
         FragColor = vec4(brightColor, texColor.a); // Set the final color with full brightness
         return; // Skip the rest of the lighting calculations

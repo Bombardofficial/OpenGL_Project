@@ -4,6 +4,9 @@
 #endif
 
 #include <iostream>
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_opengl3.h"
 #include "glad.h"
 #include <GLFW/glfw3.h>
 #include <KHR/khrplatform.h>
@@ -17,9 +20,8 @@
 #include <glm/gtx/string_cast.hpp>
 #include <vector>
 #include <random>
+
 using namespace std;
-
-
 
 
 // Vertices coordinates
@@ -36,6 +38,16 @@ GLuint indices[] =
 {
 	0, 2, 1, // Upper triangle
 	0, 3, 2 // Lower triangle
+};
+
+struct Star {
+	glm::vec3 position;
+	glm::vec3 scale;
+	float speed;
+	Texture texture;
+
+	Star(Texture& tex, glm::vec3 pos, glm::vec3 scl, float spd)
+		: texture(tex), position(pos), scale(scl), speed(spd) {}
 };
 
 struct Asteroid {
@@ -68,6 +80,7 @@ struct Projectile {
 
 std::vector<Projectile> projectiles;
 //Global variables
+std::vector<Star> stars; // Vector to hold multiple stars
 std::vector<Asteroid> asteroids; // Vector to hold multiple asteroids
 glm::vec3 spaceshipPosition = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 spaceshipScale = glm::vec3(0.2f, 0.2f, 0.2f); // Adjust scale as needed
@@ -95,7 +108,10 @@ bool isPaused = false;
 bool escPreviouslyPressed = false;
 const float PROJECTILE_COOLDOWN = 0.5f; // Cooldown time in seconds
 float lastProjectileFireTime = 0.0f; // Time since the last projectile was fired
+int score = 0;
 
+const int numStars = 500;
+std::vector<glm::vec3> starPositions(numStars); // x, y, z for each star
 
 const int numberOfFireFrames = 4; // Number of fire frames
 Texture* fireFrames[numberOfFireFrames];
@@ -327,6 +343,63 @@ void spawnAsteroid() {
 	asteroids.push_back(Asteroid(glm::vec3(randX, randY, 0.0f), glm::vec3(randScale, randScale, randScale), radius, speed));
 }
 
+void spawnStar(std::vector<Texture>& starTextures, bool initialSpawning) {
+
+	const float spawnMargin = 0.8f; // Adjust as needed
+
+	// Calculate the spawn bounds
+	float minX = std::max(spaceshipPosition.x - VIEW_WIDTH / 2 - spawnMargin, -WORLD_SIZE_X / 2);
+	float maxX = std::min(spaceshipPosition.x + VIEW_WIDTH / 2 + spawnMargin, WORLD_SIZE_X / 2);
+	float minY = std::max(spaceshipPosition.y - VIEW_HEIGHT / 2 - spawnMargin, -WORLD_SIZE_Y / 2);
+	float maxY = std::min(spaceshipPosition.y + VIEW_HEIGHT / 2 + spawnMargin, WORLD_SIZE_Y / 2);
+
+	// Generate a random position for the star
+	std::uniform_real_distribution<float> distX(minX, maxX);
+	std::uniform_real_distribution<float> distY(minY, maxY);
+	std::uniform_real_distribution<float> distScale(0.07f, 0.1f); // Adjust range as needed
+	std::uniform_real_distribution<float> distSpeed(0.0001f, 0.0005f); // Range for star speed
+
+	float randX = distX(gen);
+	float randY = distY(gen);
+
+	if (!initialSpawning) {
+		// Ensure the star isn't spawned within the viewable area
+		while ((randX > spaceshipPosition.x - VIEW_WIDTH / 2) && (randX < spaceshipPosition.x + VIEW_WIDTH / 2) &&
+			(randY > spaceshipPosition.y - VIEW_HEIGHT / 2) && (randY < spaceshipPosition.y + VIEW_HEIGHT / 2)) {
+			randX = distX(gen);
+			randY = distY(gen);
+		}
+	}
+
+	float randScale = distScale(gen);
+	float speed = distSpeed(gen); // Random speed for each star
+
+	int textureIndex = rand() % 5; // 5 = number of star textures
+
+	// Push the new star into the vector with a random speed
+	stars.push_back(Star(starTextures[textureIndex], glm::vec3(randX, randY, 0.0f), glm::vec3(randScale, randScale, randScale), speed));
+}
+
+void updateStars() {
+
+	// Calculate the boundaries of the generated stars
+	float leftBoundary = spaceshipPosition.x - (1.5 * VIEW_WIDTH);
+	float rightBoundary = spaceshipPosition.x + (1.5 * VIEW_WIDTH);
+	float topBoundary = spaceshipPosition.y + (1.5 * VIEW_HEIGHT);
+	float bottomBoundary = spaceshipPosition.y - (1.5 * VIEW_HEIGHT);
+
+	// Remove stars if outside of boundary
+	stars.erase(std::remove_if(stars.begin(), stars.end(), [&](const Star& s)
+		{
+			return s.position.x > rightBoundary || s.position.y < leftBoundary ||
+				s.position.y > topBoundary || s.position.y < bottomBoundary;
+		}), stars.end());
+
+	for (auto& star : stars) {
+		star.position.y -= star.speed; // Use the star's individual speed
+	}
+}
+
 bool checkCollision(const Asteroid& asteroid) {
 	
 	
@@ -350,8 +423,6 @@ void updateAsteroids() {
 		}	
 	}
 }
-
-
 
 void spawnEnemy() {
 	// Define the offset limits for spawning enemies
@@ -423,6 +494,7 @@ void checkEnemyProjectileCollisions() {
 					projectile.active = false;
 					enemy.active = false;
 					// Handle collision (e.g., score increment, effects, etc.)
+					score += 3;
 					break;
 				}
 			}
@@ -506,8 +578,6 @@ int main()
 	// Get the resolution of the primary monitor
 	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
 	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
-
 	
 	// Calculate the center position
 	int monitorX, monitorY;
@@ -534,6 +604,16 @@ int main()
 	// Make the OpenGL context current
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); // Enable v-sync
+
+	// Initialize ImGui
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init("#version 330");
+
+	// set start time
+	double startTime = glfwGetTime();
+
 	// Set the mouse callback
 	glfwSetCursorPosCallback(window, mouse_callback);
 
@@ -602,6 +682,28 @@ int main()
 	Texture enemyNormalMap("Assets/NormalMap3.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
 	enemyNormalMap.texUnit(shaderProgram, "normalMap3", 8);
 
+	Texture bigStar("Assets/BigStar.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
+	bigStar.texUnit(shaderProgram, "bigStar", 1);
+
+	Texture bigStar2("Assets/BigStar2.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
+	bigStar2.texUnit(shaderProgram, "bigStar2", 1);
+
+	Texture rotaryStar("Assets/RotaryStar.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
+	rotaryStar.texUnit(shaderProgram, "rotaryStar", 1);
+
+	Texture rotaryStar2("Assets/RotaryStar2.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
+	rotaryStar2.texUnit(shaderProgram, "rotaryStar", 1);
+
+	Texture blackHole("Assets/BlackHole.png", GL_TEXTURE_2D, GL_TEXTURE1, GL_RGBA, GL_UNSIGNED_BYTE);
+	blackHole.texUnit(shaderProgram, "blackHole", 1);
+
+	std::vector<Texture> starTextures;
+	starTextures.push_back(bigStar);
+	starTextures.push_back(bigStar2);
+	starTextures.push_back(rotaryStar);
+	starTextures.push_back(rotaryStar2);
+	starTextures.push_back(blackHole);
+
 	double lastTime = glfwGetTime();
 	float lightIntensity = 1.0f;
 
@@ -618,13 +720,18 @@ int main()
 	std::uniform_real_distribution<> spawnTimeDist(5.0, 15.0); // Distribution for random spawn time
 	double nextSpawnTime = lastTime + spawnTimeDist(gen);
 
+	for (int i = 0; i <= 100; ++i) {
+		spawnStar(starTextures, true);
+	}
+
 	// Main loop
 	while (!glfwWindowShouldClose(window))
 	{
-		
+		double currentTime = glfwGetTime();
+
 		// Process input
 		processInput(window);
-		
+
 		if (isPaused) {
 			glfwPollEvents();
 			continue;
@@ -651,12 +758,11 @@ int main()
 
 		// Disable the depth test
 		glDisable(GL_DEPTH_TEST);
+
 		// Calculate time passed
-		double currentTime = glfwGetTime();
 		float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
 
-		
 		if (currentTime >= nextSpawnTime) {
 			spawnEnemy();
 			nextSpawnTime = currentTime + spawnTimeDist(gen); // Set next spawn time
@@ -668,8 +774,9 @@ int main()
 			checkProjectileAsteroidCollisions();
 			checkEnemyProjectileCollisions();
 			updateEnemies(deltaTime);
-			// Update asteroid positions
+			// Update asteroid and star positions
 			updateAsteroids();
+			updateStars();
 		}
 
 
@@ -701,9 +808,38 @@ int main()
 
 		if (!gameOver) {
 			// Set background color and clear buffers
-			glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+			// Update the background color dynamically based on light intensity
+			float backgroundColor = 0.08f + 0.05f * lightIntensity;
+			glClearColor(backgroundColor, backgroundColor, backgroundColor, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 			checkProjectilePlayerCollision();
+
+			while (stars.size() <= 200) {
+				spawnStar(starTextures, false);
+			}
+
+			// Draw stars
+			for (auto& star : stars) {
+
+				shaderProgram.Activate();
+				glActiveTexture(GL_TEXTURE1); // Activate the texture unit
+				star.texture.Bind();       // Bind the texture
+				shaderProgram.setInt("star", 1);
+				shaderProgram.setBool("isAsteroid", false);
+				shaderProgram.setBool("isProjectile", false);
+				shaderProgram.setBool("isFire", false);
+				shaderProgram.setBool("isEnemy", false);
+				shaderProgram.setBool("isStar", true);
+				// Similar to drawing the spaceship, create transformation matrices and draw each star
+				glm::mat4 starTransform = glm::mat4(1.0f);
+				starTransform = glm::translate(starTransform, star.position);
+				starTransform = glm::scale(starTransform, star.scale);
+				unsigned int starTransformLoc = glGetUniformLocation(shaderProgram.ID, "transform");
+				// Set transformation matrix in the shader and draw
+				glUniformMatrix4fv(starTransformLoc, 1, GL_FALSE, glm::value_ptr(starTransform));
+				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+			}
+
 			// Draw the spaceship
 			shaderProgram.Activate();
 			glActiveTexture(GL_TEXTURE0); // Activate the texture unit for the spaceship
@@ -713,6 +849,7 @@ int main()
 			shaderProgram.setBool("isProjectile", false);
 			shaderProgram.setBool("isFire", false); // Ensure the fire flag is set to false for spaceship
 			shaderProgram.setBool("isEnemy", false);
+			shaderProgram.setBool("isStar", false);
 			glActiveTexture(GL_TEXTURE2); // Activate the texture unit for the spaceship normal map
 			normalMap2.Bind();            // Bind the normal map
 			shaderProgram.setInt("normalMap2", 2);
@@ -767,6 +904,7 @@ int main()
 				glUniform1i(glGetUniformLocation(shaderProgram.ID, "isFire"), (isAccelerating) ? GL_TRUE : GL_FALSE);
 				glUniform1i(glGetUniformLocation(shaderProgram.ID, "isAsteroid"), GL_FALSE);
 				glUniform1i(glGetUniformLocation(shaderProgram.ID, "isProjectile"), GL_FALSE);
+				glUniform1i(glGetUniformLocation(shaderProgram.ID, "isStar"), GL_FALSE);
 
 				// Draw fire
 				// Assuming that you have a quad VAO bound already that you can use to draw the fire
@@ -786,6 +924,7 @@ int main()
 				shaderProgram.setBool("isProjectile", true);
 				shaderProgram.setBool("isEnemy", false);
 				shaderProgram.setBool("isFire", false);
+				shaderProgram.setBool("isStar", false);
 				glm::mat4 projectileTransform = glm::mat4(1.0f);
 				projectileTransform = glm::translate(projectileTransform, projectile.position);
 				projectileTransform = glm::scale(projectileTransform, glm::vec3(projectile.radius, projectile.radius, projectile.radius));
@@ -801,28 +940,27 @@ int main()
 			}
 
 			if (currentTime - lastEnemySpawnTime >= ENEMY_SPAWN_COOLDOWN) {
-				std::cout << "Spawning enemy at time: " << currentTime << std::endl; // Debug statement
+				//std::cout << "Spawning enemy at time: " << currentTime << std::endl; // Debug statement
 				spawnEnemy(); // Call the function to spawn an enemy
 				lastEnemySpawnTime = static_cast<float>(currentTime); // Reset the timer
 			}
 
-			
-
 			for (auto& enemy: enemies) {
 				if (enemy.active) {
-					std::cout << "Drawing enemy at position: " << glm::to_string(enemy.position) << std::endl;
+					//std::cout << "Drawing enemy at position: " << glm::to_string(enemy.position) << std::endl;
 					shaderProgram.Activate();
 					
 					glActiveTexture(GL_TEXTURE7);
 					enemyTexture.Bind();
 					shaderProgram.setInt("tex7", 7);
-					glActiveTexture(GL_TEXTURE8);
+					//glActiveTexture(GL_TEXTURE8);
 					//enemyNormalMap.Bind();
 					//shaderProgram.setInt("normalMap3", 8);
 					shaderProgram.setBool("isAsteroid", false);
 					shaderProgram.setBool("isProjectile", false);
 					shaderProgram.setBool("isFire", false);
 					shaderProgram.setBool("isEnemy", true); // Set the isEnemy flag to true when drawing enemies
+					shaderProgram.setBool("isStar", false);
 
 					glm::mat4 enemyTransform = glm::mat4(1.0f);
 					enemyTransform = glm::translate(enemyTransform, enemy.position);
@@ -874,7 +1012,6 @@ int main()
 				spawnAsteroid();
 			}
 			frameCount++;
-			
 
 			// Draw asteroids
 			for (auto& asteroid : asteroids) {
@@ -888,7 +1025,9 @@ int main()
 				shaderProgram.setInt("normalMap", 2);
 				shaderProgram.setBool("isAsteroid", true);
 				shaderProgram.setBool("isProjectile", false);
+				shaderProgram.setBool("isFire", false);
 				shaderProgram.setBool("isEnemy", false);
+				shaderProgram.setBool("isStar", false);
 				// Similar to drawing the spaceship, create transformation matrices and draw each asteroid
 				glm::mat4 asteroidTransform = glm::mat4(1.0f);
 				asteroidTransform = glm::translate(asteroidTransform, asteroid.position);
@@ -898,7 +1037,31 @@ int main()
 				glUniformMatrix4fv(asteroidTransformLoc, 1, GL_FALSE, glm::value_ptr(asteroidTransform));
 				glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 			}
+
+			// Calculate elapsed time
+			double elapsedTime = currentTime - startTime;
+
+			// Update score every 10 seconds
+			if (elapsedTime >= 10.0) {
+				score += 10;
+				startTime = currentTime; // Reset the timer
+			}
+
+			// Start the ImGui frame
+			ImGui_ImplOpenGL3_NewFrame();
+			ImGui_ImplGlfw_NewFrame();
+			ImGui::NewFrame();
 			
+			// Add UI elements
+			ImGui::Begin("Stats");
+			ImGui::Text("Elapsed Time: %.2f seconds		", currentTime);
+			ImGui::Text("Score: %d", score);
+
+			ImGui::End();
+
+			// Render ImGui draw data
+			ImGui::Render();
+			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		}
 		else if(gameOver){
 			// Render game over screen
@@ -919,6 +1082,11 @@ int main()
 	for (int i = 0; i < numberOfFireFrames; ++i) {
 		delete fireFrames[i];
 	}
+	// clean imgui resources
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+
 	// Delete all the objects we've created
 	VAO1.Delete();
 	VBO1.Delete();
