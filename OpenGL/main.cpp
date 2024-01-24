@@ -885,10 +885,6 @@ int main()
 	}
 	for (int i = 0; i < numberOfExplosionFrames; ++i) {
 		explosionFrames[i] = new Texture(("Assets/asteroidexp" + std::to_string(i + 1) + ".png").c_str(), GL_TEXTURE_2D, GL_TEXTURE0 + 17 + i, GL_RGBA, GL_UNSIGNED_BYTE);
-		if (explosionFrames[i] != nullptr) {
-			std::cerr << "Failed to load texture for frame " << i << std::endl;
-			// Handle the error, possibly by setting the pointer to nullptr or exiting
-		}
 		explosionFrames[i]->texUnit(shaderProgram, ("tex" + std::to_string(17 + i)).c_str(), 17 + i);
 	}
 	for (int i = 0; i < numberOfExplosionFrames; ++i) {
@@ -1282,7 +1278,6 @@ int main()
 				shaderProgram.Activate();
 				
 				if (asteroid.isExploding) {
-					std::cout << "Explosion frame: " << asteroid.currentExplosionFrame << std::endl;
 					if (asteroid.currentExplosionFrame < numberOfExplosionFrames && explosionFrames[asteroid.currentExplosionFrame] != nullptr) {
 						
 						asteroid.update(deltaTime);
