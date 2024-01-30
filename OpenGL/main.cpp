@@ -8,16 +8,16 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
 #include "glad.h"
-#include <GLFW/glfw3.h>
-#include <KHR/khrplatform.h>
+#include "include/GLFW/glfw3.h"
+#include "include/KHR/khrplatform.h"
 #include "shaderClass.h"
 #include "Texture.h"
 #include "VAO.h"
 #include "EBO.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/gtx/string_cast.hpp>
+#include "include/glm/glm.hpp"
+#include "include/glm/gtc/matrix_transform.hpp"
+#include "include/glm/gtc/type_ptr.hpp"
+#include "include/glm/gtx/string_cast.hpp"
 #include <vector>
 #include <random>
 using namespace std;
@@ -150,6 +150,8 @@ float lastProjectileFireTime = 0.0f; // Time since the last projectile was fired
 double gameStartTime = glfwGetTime();
 int spaceshipLives = 2; // Start with two lives
 int score = 0;
+double timeSurvived = 0.0f;
+double scoreTimer = 0.0f;
 
 const int numStars = 500;
 std::vector<glm::vec3> starPositions(numStars); // x, y, z for each star
@@ -286,6 +288,10 @@ void initializeGameState(std::vector<Projectile>& projectiles,
 
 	// Reset game start time
 	gameStartTime = glfwGetTime();
+
+	score = 0.0f;
+	timeSurvived = 0.0f;
+	scoreTimer = 0.0f;
 
 	// Add any additional state resets here...
 }
@@ -755,9 +761,6 @@ int main()
 	ImGui::CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
-
-	// set start time
-	double startTime = glfwGetTime();
 
 	// Set the mouse callback
 	glfwSetCursorPosCallback(window, mouse_callback);
@@ -1327,13 +1330,15 @@ int main()
 			}
 
 			// Calculate elapsed time
-			double elapsedTime = currentTime - startTime;
+			double elapsedTime = currentTime - gameStartTime;
 
 			// Update score every 10 seconds
-			if (elapsedTime >= 10.0) {
+			if (elapsedTime - scoreTimer > 10) {
 				score += 10;
-				startTime = currentTime; // Reset the timer
+				scoreTimer += 10.0f;
 			}
+
+			timeSurvived = elapsedTime;
 
 			// Start the ImGui frame
 			ImGui_ImplOpenGL3_NewFrame();
@@ -1342,7 +1347,7 @@ int main()
 			
 			// Add UI elements
 			ImGui::Begin("Stats");
-			ImGui::Text("Elapsed Time: %.2f seconds		", currentTime);
+			ImGui::Text("Elapsed Time: %.2f seconds		", elapsedTime);
 			ImGui::Text("Score: %d", score);
 
 			ImGui::End();
@@ -1356,6 +1361,22 @@ int main()
 			// Clear screen
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Black background
 			glClear(GL_COLOR_BUFFER_BIT);
+			
+			// Start the ImGui frame
+			ImGui_ImplOpenGL3_NewFrame();
+			ImGui_ImplGlfw_NewFrame();
+			ImGui::NewFrame();
+
+			// Add UI elements
+			ImGui::Begin("Game Over");
+			ImGui::Text("Time survived: %.2f seconds		", timeSurvived);
+			ImGui::Text("Score: %d", score);
+
+			ImGui::End();
+
+			// Render ImGui draw data
+			ImGui::Render();
+			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 			// Render "Game Over" text
 			// This can be done using text rendering libraries like FreeType

@@ -7,7 +7,7 @@
 #include <sstream>
 #include <iostream>
 #include <cerrno>
-#include <glm/fwd.hpp>
+#include "include/glm/fwd.hpp"
 
 std::string get_file_contents(const char* filename);
 
