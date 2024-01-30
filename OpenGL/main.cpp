@@ -1397,6 +1397,8 @@ int main()
 			explosionFrames[i] = nullptr;
 		}
 	}
+
+	stars.clear();
 	
 	// clean imgui resources
 	ImGui_ImplOpenGL3_Shutdown();
@@ -1409,6 +1411,25 @@ int main()
 	EBO1.Delete();
 	spaceShip.Delete();
 	shaderProgram.Delete();
+	spaceShip2.Delete();
+	asteroidTexture.Delete();
+	normalMap.Delete();
+	normalMap2.Delete();
+	normalMap5.Delete();
+	projectileTexture.Delete();
+	enemyTexture.Delete();
+	enemyNormalMap.Delete();
+	bigEnemyNormalMap.Delete();
+	enemyExplosionSpritesheet.Delete();
+	bigEnemyTexture.Delete();
+	bossEnemyTexture.Delete();
+	bossEnemyNormalMap.Delete();
+	bigStar.Delete();
+	bigStar2.Delete();
+	rotaryStar.Delete();
+	rotaryStar2.Delete();
+	blackHole.Delete();
+
 	// Delete window before ending the program
 	glfwDestroyWindow(window);
 	// Terminate GLFW before ending the program
